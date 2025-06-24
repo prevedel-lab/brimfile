@@ -35,6 +35,6 @@ remote-store = ["fsspec"]
 export-tiff = ["tifffile"]
 
 [project.urls]
-Documentation = "https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/BLS_file_specs.md"
+Documentation = "https://prevedel-lab.github.io/brimfile/"
 Repository = "https://github.com/prevedel-lab/brimfile"
 Issues = "https://github.com/prevedel-lab/brimfile/issues"
