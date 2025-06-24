@@ -35,6 +35,6 @@ remote-store = ["fsspec"]
 export-tiff = ["tifffile"]
 
 [project.urls]
-Documentation = "https://prevedel-lab.github.io/brimfile/docs/brimfile.html"
+Documentation = "https://prevedel-lab.github.io/brimfile/brimfile.html"
 Repository = "https://github.com/prevedel-lab/brimfile"
 Issues = "https://github.com/prevedel-lab/brimfile/issues"
