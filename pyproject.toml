@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+[tool.hatch.version]
+path = "src/brimfile/__init__.py"
+
+[project]
+name = "brimfile"
+dynamic = ["version"]
+authors = [
+    {name = "Carlo Bevilacqua", email = "carlo.bevilacqua@embl.de"},
+    {name = "Sebastian Hambura", email = "sebastian.hambura@embl.de"},
+]
+description = "A package to read and write to the brim file format, containing spectral data and metadata from Brillouin microscopy"
+readme = "README.md"
+license = "LGPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Intended Audience :: Science/Research",
+	"Intended Audience :: Developers",
+	"Topic :: File Formats",
+	"Topic :: Scientific/Engineering",
+  "Programming Language :: Python :: 3"
+	
+]
+keywords = ["Brillouin microscopy"]
+dependencies = [
+  "numpy",
+  "zarr >= 3.0"
+]
+
+[project.optional-dependencies]
+remote-store = ["fsspec"]
+export-tiff = ["tifffile"]
+
+[project.urls]
+Documentation = "https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/BLS_file_specs.md"
+Repository = "https://github.com/prevedel-lab/brimfile"
+Issues = "https://github.com/prevedel-lab/brimfile/issues"
