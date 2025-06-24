@@ -15,4 +15,4 @@ pip install brimfile
 
 ## How to use it
 
-The documentation of the package can be found [here](https://prevedel-lab.github.io/brimfile/brimfile.html).
+The documentation of the package can be found [here](https://prevedel-lab.github.io/brimfile/).
