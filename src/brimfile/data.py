@@ -256,22 +256,26 @@ class Data:
             group = data._file.create_group(ar_full_path)
             return cls(data._file, ar_full_path, data._spatial_map, data._spatial_map_px_size)
 
-        def add_data(self, data_AntiStokes, data_Stokes=None):
+        def add_data(self, data_AntiStokes=None, data_Stokes=None):
             """
             Adds data for the analysis results for AntiStokes and Stokes peaks to the file.
+            
             Args:
                 data_AntiStokes (list[dict]): A list of dictionaries containing analysis results 
-                for AntiStokes peaks. Each element of the list corresponds to a single peak that was fitted.
-                In case only one peak was fitted it must be a list with a single element.
-                Each dictionary may include the following keys (plus the corresponding units,  e.g. 'shift_units'):
-                - 'shift': The shift value.
-                - 'width': The width value.
-                - 'amplitude': The amplitude value.
-                - 'offset': The offset value.
-                - 'R2': The R-squared value.
-                - 'RMSE': The root mean square error value.
-                - 'Cov_matrix': The covariance matrix.
+                    for AntiStokes peaks. Each element of the list corresponds to a single peak that was fitted.
+                    In case only one peak was fitted it must be a list with a single element.
+                
+                    Each dictionary may include the following keys (plus the corresponding units,  e.g. 'shift_units'):
+                        - 'shift': The shift value.
+                        - 'width': The width value.
+                        - 'amplitude': The amplitude value.
+                        - 'offset': The offset value.
+                        - 'R2': The R-squared value.
+                        - 'RMSE': The root mean square error value.
+                        - 'Cov_matrix': The covariance matrix.
                 data_Stokes (list[dict], optional): same as `data_AntiStokes` for the Stokes peaks.
+
+                Both `data_AntiStokes` and `data_Stokes` are optional, but at least one of them must be provided.
             """
 
             ar_cls = Data.AnalysisResults
