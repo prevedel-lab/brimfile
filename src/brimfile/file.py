@@ -38,6 +38,9 @@ class File:
                 filename, mode=mode, store_type=store_type)
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
+            
+    def __del__(self):
+        self.close()
 
     def close(self) -> None:
         self._file.close()
