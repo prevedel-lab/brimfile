@@ -1,7 +1,7 @@
 """
 ## What is brimfile?
 
-*brimfile* is a Python library to read from and write to brim files,
+*brimfile* is a Python library to read from and write to brim (**Br**illouin **im**aging) files,
 which contain both the spectra and analysed data for Brillouin imaging.
 More information about the brim file format can be found [here](https://github.com/prevedel-lab/Brillouin-standard-file).
 
