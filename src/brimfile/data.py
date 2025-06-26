@@ -38,6 +38,12 @@ class Data:
         Returns the name of the data group.
         """
         return get_object_name(self._file, self._path)
+    
+    def get_index(self):
+        """
+        Returns the index of the data group.
+        """
+        return int(self._path.split('/')[-1].split('_')[-1])
 
     def _load_spatial_mapping(self) -> tuple:
         """
