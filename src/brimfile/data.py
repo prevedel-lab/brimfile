@@ -122,6 +122,30 @@ class Data:
                             for px_sz in (dZ, dY, dX))
         return cv, px_size
 
+    def get_PSD(self) -> tuple:
+        """
+        LOW LEVEL FUNCTION
+
+        Retrieve the Power Spectral Density (PSD) and frequency from the current data group.
+        Note: this function exposes the internals of the brim file and thus the interface might change in future versions.
+        Use only if more specialized functions are not working for your application!
+        Returns:
+            tuple: (PSD, frequency, PSD_units, frequency_units)
+                - PSD: A 2D (or more) numpy array containing all the spectra (see [specs](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
+                - frequency: A numpy array representing the frequency data (see [specs](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
+                - PSD_units: The units of the PSD.
+                - frequency_units: The units of the frequency.
+        """
+        PSD = self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.PSD))
+        frequency = self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.frequency))
+        # retrieve the units of the PSD and frequency
+        PSD_units = units.of_object(self._file, PSD)
+        frequency_units = units.of_object(self._file, frequency)
+
+        return PSD, frequency, PSD_units, frequency_units
+
     def get_spectrum(self, index: int) -> tuple:
         """
         Retrieve a spectrum from the data group.
