@@ -133,19 +133,22 @@ class Data:
             tuple: (PSD, frequency, PSD_units, frequency_units) for the specified index. 
                     PSD can be 1D or more (if there are additional parameters);
                     frequency has the same size as PSD
+        Raises:
+            IndexError: If the index is out of range for the PSD dataset.
         """
         PSD = self._file.open_dataset(concatenate_paths(
             self._path, brim_obj_names.data.PSD))
         if index >= PSD.shape[0]:
             raise IndexError(
-                f"index {index} out of range for PSD with shape {PSD.shape}")
+                f"index {index} out of range for PSD with shape {PSD.shape}")        
         frequency = self._file.open_dataset(concatenate_paths(
             self._path, brim_obj_names.data.frequency))
-        if frequency.ndim < PSD.ndim:
-            frequency = np.broadcast_to(frequency, PSD.shape)
         # retrieve the units of the PSD and frequency
         PSD_units = units.of_object(self._file, PSD)
         frequency_units = units.of_object(self._file, frequency)
+        # broadcast frequency to match the shape of PSD
+        if frequency.ndim < PSD.ndim:
+            frequency = np.broadcast_to(frequency, PSD.shape)
         return PSD[index, ...], frequency[index, ...], PSD_units, frequency_units
 
     def get_spectrum_in_image(self, coor: tuple) -> tuple:
