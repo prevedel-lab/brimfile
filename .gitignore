@@ -1,4 +1,5 @@
 .venv/
+.vscode/
 .DS_Store
 src/brimfile/__pycache__/*
 dist/*
