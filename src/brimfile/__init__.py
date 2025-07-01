@@ -57,17 +57,25 @@ f = brim.File.create(filename, store_type='zip')
 ### Data
 
 You can then get a `brimfile.data.Data` object representing the data group in the brim file
-either by getting an existing one (`brimfile.file.File.get_data`) or creating a new one (`brimfile.file.File.create_data_group`).
+by opening an existing one (`brimfile.file.File.get_data`).
 
 ```Python
 # Get the first data group in the file
 data = f.get_data()
+```
 
+To add a new data group to the file, you can use the `brimfile.file.File.create_data_group` method,
+which accepts a 4D array for the PSD with dimensions (z, y, x, spectrum),
+a frequency array which might have the same size as PSD or be 1D, in case the frequency axis is the same for all the spectra.
+```Python
 # or create a new one
 data = f.create_data_group(PSD, freq_GHz, (dz, dy, dx), name='my_data_group')
 ```
+Alternatively you can use `brimfile.file.File.create_data_group_raw`, which let you directly assign the correspondence
+between the spatial positions and the spectra trhough the `scanning` dictionary.
 
-You can get the spectrum corresponding to a pixel in the image by calling the `brimfile.data.Data.get_spectrum_in_image` method:
+Once you have an istance of `brimfile.data.Data`, you can get the spectrum corresponding to a pixel in the image
+by calling the `brimfile.data.Data.get_spectrum_in_image` method:
 ```Python
 PSD, frequency, PSD_units, frequency_units = data.get_spectrum_in_image((pz,py,px))    
 ```
@@ -106,11 +114,13 @@ The results of the analysis can be accessed through the `brimfile.data.Data.Anal
 ``` Python
 analysis_results = data.get_analysis_results()
 ```
-or create a new one by calling the `brimfile.data.Data.create_analysis_results_group_raw`:
+or create a new one by calling the `brimfile.data.Data.create_analysis_results_group`:
 ``` Python
-analysis_results = data.create_analysis_results_group_raw(shift, width,
+analysis_results = data.create_analysis_results_group(shift, width,
     name='my_analysis_results')
 ```
+Alternatively, if the `data` object was created with the `brimfile.file.File.create_data_group_raw` method, 
+you can create the analysis results group by calling `brimfile.data.Data.create_analysis_results_group_raw`.
 
 `AnalysisResults` also exposes a method to retrieve the images of the analysis results (`brimfile.data.Data.AnalysisResults.get_image`):
 
@@ -148,8 +158,8 @@ def generate_data():
     n_points = Nx*Ny*Nz  # total number of points
 
     width_GHz = 0.4
-    width_GHz_arr = np.full(n_points, width_GHz)
-    shift_GHz_arr = np.empty(n_points)
+    width_GHz_arr = np.full((Nz, Ny, Nx), width_GHz)
+    shift_GHz_arr = np.empty((Nz, Ny, Nx))
     freq_GHz = np.linspace(6, 9, 151)  # 151 frequency points
     PSD = np.empty((Nz, Ny, Nx, len(freq_GHz)))
     for i in range(Nz):
@@ -159,9 +169,9 @@ def generate_data():
                 #let's increase the shift linearly to have a readout 
                 shift_GHz = freq_GHz[0] + (freq_GHz[-1]-freq_GHz[0]) * index/n_points
                 spectrum = lorentzian(freq_GHz, shift_GHz, width_GHz)
-                shift_GHz_arr[index] = shift_GHz 
+                shift_GHz_arr[i,j,k] = shift_GHz 
                 PSD[i, j, k,:] = spectrum
-    
+
     return PSD, freq_GHz, (dz,dy,dx), shift_GHz_arr, width_GHz_arr
 ```
 
@@ -192,10 +202,10 @@ Now we can use this function to create a brim file with a data group and some me
     md.add(Metadata.Type.Experiment, {'Temperature':temp}, local=True)
 
     # create the analysis results
-    ar = d0.create_analysis_results_group_raw(({'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},),
-                                             ({'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},),
+    ar = d0.create_analysis_results_group({'shift':shift_GHz, 'shift_units': 'GHz',
+                                             'width': width_GHz, 'width_units': 'Hz'},
+                                             {'shift':shift_GHz, 'shift_units': 'GHz',
+                                             'width': width_GHz, 'width_units': 'Hz'},
                                              name = 'test1_analysis')
     f.close()
 ```
@@ -268,7 +278,7 @@ ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filenam
 ```
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from .file import File
 from .data import Data

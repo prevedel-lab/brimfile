@@ -7,7 +7,7 @@ from brimfile import File, Data, Metadata
 
 from datetime import datetime
 
-filename = 'path/to/your/file.brim.zip'  
+filename = 'path/to/your/file.brim.zip'   
 
 def generate_data():
     def lorentzian(x, x0, w):
@@ -17,8 +17,8 @@ def generate_data():
     n_points = Nx*Ny*Nz  # total number of points
 
     width_GHz = 0.4
-    width_GHz_arr = np.full(n_points, width_GHz)
-    shift_GHz_arr = np.empty(n_points)
+    width_GHz_arr = np.full((Nz, Ny, Nx), width_GHz)
+    shift_GHz_arr = np.empty((Nz, Ny, Nx))
     freq_GHz = np.linspace(6, 9, 151)  # 151 frequency points
     PSD = np.empty((Nz, Ny, Nx, len(freq_GHz)))
     for i in range(Nz):
@@ -28,7 +28,7 @@ def generate_data():
                 #let's increase the shift linearly to have a readout 
                 shift_GHz = freq_GHz[0] + (freq_GHz[-1]-freq_GHz[0]) * index/n_points
                 spectrum = lorentzian(freq_GHz, shift_GHz, width_GHz)
-                shift_GHz_arr[index] = shift_GHz 
+                shift_GHz_arr[i,j,k] = shift_GHz 
                 PSD[i, j, k,:] = spectrum
 
     return PSD, freq_GHz, (dz,dy,dx), shift_GHz_arr, width_GHz_arr
@@ -56,10 +56,10 @@ if __name__ == "__main__":
     md.add(Metadata.Type.Experiment, {'Temperature':temp}, local=True)
 
     # create the analysis results
-    ar = d0.create_analysis_results_group_raw(({'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},),
-                                             ({'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},),
+    ar = d0.create_analysis_results_group({'shift':shift_GHz, 'shift_units': 'GHz',
+                                             'width': width_GHz, 'width_units': 'Hz'},
+                                             {'shift':shift_GHz, 'shift_units': 'GHz',
+                                             'width': width_GHz, 'width_units': 'Hz'},
                                              name = 'test1_analysis')
     f.close()
 

@@ -4,7 +4,7 @@ import warnings
 from enum import Enum
 
 from .file_abstraction import FileAbstraction
-from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name
+from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name, var_to_singleton
 
 from .metadata import Metadata
 
@@ -261,9 +261,8 @@ class Data:
             Adds data for the analysis results for AntiStokes and Stokes peaks to the file.
             
             Args:
-                data_AntiStokes (list[dict]): A list of dictionaries containing analysis results 
-                    for AntiStokes peaks. Each element of the list corresponds to a single peak that was fitted.
-                    In case only one peak was fitted it must be a list with a single element.
+                data_AntiStokes (dict or list[dict]): A dictionary containing the analysis results for AntiStokes peaks.
+                    In case multiple peaks were fitted, it might be a list of dictionaries with each element corresponding to a single peak.
                 
                     Each dictionary may include the following keys (plus the corresponding units,  e.g. 'shift_units'):
                         - 'shift': The shift value.
@@ -273,7 +272,7 @@ class Data:
                         - 'R2': The R-squared value.
                         - 'RMSE': The root mean square error value.
                         - 'Cov_matrix': The covariance matrix.
-                data_Stokes (list[dict], optional): same as `data_AntiStokes` for the Stokes peaks.
+                data_Stokes (dict or list[dict]): same as `data_AntiStokes` for the Stokes peaks.
 
                 Both `data_AntiStokes` and `data_Stokes` are optional, but at least one of them must be provided.
             """
@@ -329,9 +328,11 @@ class Data:
                             data['Cov_matrix_units'], ar_cls.Quantity.Cov_matrix, pt, index)
 
             if data_AntiStokes is not None:
+                data_AntiStokes = var_to_singleton(data_AntiStokes)
                 for i, d_as in enumerate(data_AntiStokes):
                     add_data_pt(ar_cls.PeakType.AntiStokes, d_as, i)
             if data_Stokes is not None:
+                data_Stokes = var_to_singleton(data_Stokes)
                 for i, d_s in enumerate(data_Stokes):
                     add_data_pt(ar_cls.PeakType.Stokes, d_s, i)
 
@@ -576,12 +577,46 @@ class Data:
             return (pars, pars_names)
         return (None, None)
 
+    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None) -> AnalysisResults:
+        """
+        Adds a new AnalysisResults entry to the current data group.
+        Parameters:
+            data_AntiStokes (dict or list[dict]): contains the same elements as the ones in `AnalysisResults.add_data`,
+                but all the quantities (i.d. 'shift', 'width', etc.) are 3D, corresponding to the spatial positions (z, y, x).
+            data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
+            index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
+            name (str, optional): The name for the new Analysis group. Defaults to None.
+        Returns:
+            AnalysisResults: The newly created AnalysisResults object.
+        Raises:
+            IndexError: If the specified index already exists in the dataset.
+            ValueError: If any of the data provided is not valid or consistent
+        """
+        def flatten_data(data: dict):
+            if data is None:
+                return None
+            data = var_to_singleton(data)
+            out_data = []
+            for dn in data:
+                for k in dn.keys():
+                    if not k.endswith('_units'):
+                        d = dn[k]
+                        if d.ndim != 3 or d.shape != self._spatial_map.shape:
+                            raise ValueError(
+                                f"'{k}' must have 3 dimensions (z, y, x) and same shape as the spatial map ({self._spatial_map.shape})")
+                        dn[k] = np.reshape(d, -1)  # flatten the data
+                out_data.append(dn)
+            return out_data
+        data_AntiStokes = flatten_data(data_AntiStokes)
+        data_Stokes = flatten_data(data_Stokes)
+        return self.create_analysis_results_group_raw(data_AntiStokes, data_Stokes, index, name)
+
     def create_analysis_results_group_raw(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None) -> AnalysisResults:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
-            data_AntiStokes (list[dict]): see documentation for AnalysisResults.add_data
-            data_Stokes (list[dict]): same as data_AntiStokes for the Stokes peaks.
+            data_AntiStokes (dict or list[dict]): see documentation for AnalysisResults.add_data
+            data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
             index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new Analysis group. Defaults to None.
         Returns:

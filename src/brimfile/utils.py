@@ -69,3 +69,17 @@ def set_object_name(file: FileAbstraction, obj, name: str):
     The name is set by attaching a 'Name' attribute to the object.
     """
     file.create_attr(obj, 'Name', name)
+
+def var_to_singleton(var):
+    """
+    If `var` is not a list or a tuple, convert it to a single-ton (list with one element).
+
+    Args:
+        var: The variable to convert.
+
+    Returns:
+        list: A single-ton containing the variable.
+    """    
+    if (not isinstance(var, list)) and (not isinstance(var, tuple)):
+        var = [var,]
+    return var
