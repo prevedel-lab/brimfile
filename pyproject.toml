@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-remote-store = ["zarr[remote]>=3", "aiohttp"]
+remote-store = ["zarr[remote]>=3"]
 export-tiff = ["tifffile"]
 
 [project.urls]

@@ -1,5 +1,7 @@
 import warnings
 from abc import ABC, abstractmethod
+from enum import Enum
+
 use_h5 = False
 
 __docformat__ = "google"
@@ -264,46 +266,76 @@ else:
 
         import importlib.util
 
+        class StoreType(Enum):
+            """
+            Enum to represent the type of store used by the Zarr file.
+            """
+            ZIP = 'zip'
+            ZARR = 'zarr'
+            S3 = 'S3'
+            AUTO = 'auto'
+
         class _zarrFile (FileAbstraction):
-            def __init__(self, filename: str, mode: str = 'r', store_type: str = 'auto'):
+            def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
                 """
                 Initialize the Zarr file.
 
                 Args:
                     filename (str): Path to the Zarr file.
                     mode: the mode for opening the file (default is 'r' for read-only).
-                    store_type (str): Type of the store to use ('zip', 'zarr', 'remote', 'auto'). Default is 'auto'.
+                    store_type (str): Type of the store to use. Default is 'AUTO'.
                 """
+                st = StoreType
 
-                if store_type == 'zip':
+                if store_type == st.ZIP:
                     if not filename.endswith('.zip'):
                         filename += '.zip'
-                elif store_type == 'zarr':
+                elif store_type == st.ZARR:
                     if not filename.endswith('.zarr'):
                         filename += '.zarr'
-                elif store_type == 'auto':
-                    if filename.endswith('.zip'):
-                        store_type = 'zip'
+                elif store_type == st.AUTO:
+                    if filename.startswith('http'):
+                        store_type = st.S3
+                    elif filename.endswith('.zip'):
+                        store_type = st.ZIP
                     elif filename.endswith('.zarr'):
-                        store_type = 'zarr'
+                        store_type = st.ZARR
                     else:
                         raise ValueError(
                             "When using 'auto' store_type, the filename must end with '.zip' or '.zarr'.")
 
                 match store_type:
-                    case 'zip':
+                    case st.ZIP:
                         mode_zip = mode
                         if mode_zip == 'w-':
                             mode_zip = 'x'
                         store = zarr.storage.ZipStore(filename, mode=mode_zip)
-                    case 'zarr':
+                    case st.ZARR:
                         store = zarr.storage.LocalStore(filename)
-                    case 'remote':
+                    case st.S3:
                         if importlib.util.find_spec('fsspec') is None:
                             raise ModuleNotFoundError(
-                                "The fsspec module is required for using remote storage")
-                        store = zarr.storage.FsspecStore.from_url(url=filename,
-                                                                  read_only=(mode == 'r'))
+                                "The fsspec module is required for using S3 storage")
+                        import fsspec
+                        import re
+                        # Regex to parse the URL
+                        pattern = r'^(https?)://([^/]+)/?(.*)$'
+                        match = re.match(pattern, filename)
+                        if not match:
+                            raise ValueError(
+                                f"Invalid URL format: {filename}. Expected format is 'https://domain/path'.")
+                        protocol = match.group(1)  # 'https'
+                        if protocol != 'https':
+                            raise ValueError(
+                                f"Unsupported protocol '{protocol}'. Only 'https' is supported.")
+                        endpoint_url = match.group(2)   # 'endpoint'
+                        path = match.group(3)           # 'name'                            
+
+                        fs = fsspec.filesystem('s3', anon=True, asynchronous=True,
+                                            client_kwargs={'endpoint_url': f"{protocol}://{endpoint_url}"})
+
+                        store = zarr.storage.FsspecStore(fs, path = path,
+                                                        read_only=(mode == 'r'))
                     case _:
                         raise ValueError(
                             f"Unsupported store type '{store_type}'. Supported types are 'zip', 'zarr', and 'remote'.")

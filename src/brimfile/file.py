@@ -6,7 +6,7 @@ from .metadata import Metadata
 from .utils import concatenate_paths
 from .constants import brim_obj_names
 
-from .file_abstraction import FileAbstraction
+from .file_abstraction import FileAbstraction, StoreType
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys
@@ -26,13 +26,13 @@ class File:
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
     else:
-        def __init__(self, filename: str, mode: str = 'r', store_type: str = 'zip'):
+        def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
             """
             Initialize the File object.
 
             Args:
                 filename (str): Path to the brim file.
-                store_type (str): Type of the store to use ('zip', 'zarr', 'remote', 'auto'). Default is 'auto'.
+                store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'auto'.
             """
             self._file = _AbstractFile(
                 filename, mode=mode, store_type=store_type)

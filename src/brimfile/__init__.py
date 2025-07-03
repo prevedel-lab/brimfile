@@ -283,3 +283,4 @@ __version__ = "1.1.0"
 from .file import File
 from .data import Data
 from .metadata import Metadata
+from .file_abstraction import StoreType
