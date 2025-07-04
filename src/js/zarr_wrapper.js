@@ -243,7 +243,7 @@ function loadZarrFile(file) {
     pyodide.globals.set("_bls_file_filename_temp", file.name);
 
     pyodide.runPython(`
-        from bls_class_py import brimfile as bls
+        import brimfile as bls
         global _bls_file_id_temp
         global bls_file
         zf = _zarrFile(_bls_file_id_temp, filename=_bls_file_filename_temp)
