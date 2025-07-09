@@ -2,12 +2,13 @@ import numpy as np
 
 import sys
 import os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-from brimfile import File, Data, Metadata
+import brimfile as brim
 
 from datetime import datetime
 
-filename = 'path/to/your/file.brim.zip'   
+filename = os.path.abspath(os.path.join(os.path.dirname(__file__), 'file.brim.zip' ))
 
 def generate_data():
     def lorentzian(x, x0, w):
@@ -37,23 +38,23 @@ def generate_data():
 if __name__ == "__main__":
     #%% writing the test file 
 
-    f = File.create(filename, store_type='auto')
+    f = brim.File.create(filename, store_type=brim.StoreType.AUTO)
 
     PSD, freq_GHz, (dz,dy,dx), shift_GHz, width_GHz = generate_data()
 
     d0 = f.create_data_group(PSD, freq_GHz, (dz,dy,dx), name='test1')
 
     # Create the metadata
-    Attr = Metadata.Item
+    Attr = brim.Metadata.Item
     datetime_now = datetime.now().isoformat()
     temp = Attr(22.0, 'C')
     md = d0.get_metadata()
 
-    md.add(Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp})
-    md.add(Metadata.Type.Optics, {'Wavelength':Attr(660, 'nm')})
+    md.add(brim.Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp})
+    md.add(brim.Metadata.Type.Optics, {'Wavelength':Attr(660, 'nm')})
     # Add some metadata to the local data group   
     temp = Attr(37.0, 'C')
-    md.add(Metadata.Type.Experiment, {'Temperature':temp}, local=True)
+    md.add(brim.Metadata.Type.Experiment, {'Temperature':temp}, local=True)
 
     # create the analysis results
     ar = d0.create_analysis_results_group({'shift':shift_GHz, 'shift_units': 'GHz',
@@ -66,7 +67,7 @@ if __name__ == "__main__":
 
     #%% reading the test file 
 
-    f = File(filename)
+    f = brim.File(filename)
 
     # check if the file is read only
     f.is_read_only()
@@ -90,7 +91,7 @@ if __name__ == "__main__":
     time.value
     time.units
     temp = md['Experiment.Temperature']
-    md_dict = md.to_dict(Metadata.Type.Experiment)
+    md_dict = md.to_dict(brim.Metadata.Type.Experiment)
 
 
     #get the list of analysis results in the data group
@@ -103,13 +104,13 @@ if __name__ == "__main__":
     pt = ar.list_existing_peak_types()
     qt = ar.list_existing_quantities()
     # get the image of the shift quantity for the average of the Stokes and anti-Stokes peaks
-    img, px_size = ar.get_image(Data.AnalysisResults.Quantity.Shift, Data.AnalysisResults.PeakType.average)
+    img, px_size = ar.get_image(brim.Data.AnalysisResults.Quantity.Shift, brim.Data.AnalysisResults.PeakType.average)
     # get the units of the shift quantity
-    u = ar.get_units(Data.AnalysisResults.Quantity.Shift)
+    u = ar.get_units(brim.Data.AnalysisResults.Quantity.Shift)
 
     # get a quantity at a specific pixel (coord) in the image
     coord = (1,3,4)
-    qt_at_px = ar.get_quantity_at_pixel(coord, Data.AnalysisResults.Quantity.Shift, Data.AnalysisResults.PeakType.average)
+    qt_at_px = ar.get_quantity_at_pixel(coord, brim.Data.AnalysisResults.Quantity.Shift, brim.Data.AnalysisResults.PeakType.average)
     assert img[coord]==qt_at_px
 
     # get the spectrum in the image at a specific pixel (coord)
