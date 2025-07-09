@@ -111,7 +111,7 @@ class File:
             raise ValueError(
                 "'frequency' must have either 4 dimensions (z, y, x, spectrum) or 1 dimension (spectrum)")
         if len(px_size_um) != 3:
-            raise ValueError("'px_size_um' must have 3 elements (z,y,x)")
+            raise ValueError("'px_size_um' must have 3 elements (z,y,x); unused dimensions can be set to nan")
 
         PSD_flat = np.reshape(PSD, (-1, PSD.shape[3]))
         if frequency.ndim == 4:

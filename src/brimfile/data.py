@@ -712,7 +712,7 @@ class Data:
                 - 'Cartesian_visualisation' (optional): A 3D numpy array containing the association between spatial position and spectra.
                    It must have integer values between 0 and PSD.shape[0]-1, or -1 for invalid entries.
                 - 'Cartesian_visualisation_pixel' (optional): A list or array of 3 float values 
-                  representing the pixel size in the z, y, and x dimensions.
+                  representing the pixel size in the z, y, and x dimensions (you can set the unused dimensions to nan).
                 - 'Cartesian_visualisation_pixel_unit' (optional): A string representing the unit of the pixel size (e.g. 'um').
             timestamp (np.ndarray): the timestamp associated with each spectrum.
                 It must be a 1D array with the same length as the PSD array.
