@@ -40,7 +40,11 @@ class File:
                 raise ValueError("The brim file is not valid!")
             
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception as e:
+            # don't throw an error if the file cannot be closed
+            pass
 
     def close(self) -> None:
         self._file.close()
