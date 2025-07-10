@@ -1,4 +1,5 @@
 import ZipStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/zip/+esm";
+import FetchStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/fetch/+esm";
 import * as zarr from "https://cdn.jsdelivr.net/npm/zarrita/+esm";
 
 //////////////////////////////////////////////////////////////////
@@ -163,10 +164,23 @@ function standardize_path(path) {
 class ZarrFile {
   constructor() {
   }
+  static StoreType = Object.freeze({
+    ZIP: 'zip',
+    ZARR: 'zarr',
+    S3: 'S3',
+    AUTO: 'auto'
+  })
 
   async init(file) {
     this.store = await ZipStore.fromBlob(file);
     this.root = await zarr.open(this.store, { kind: "group" });
+    this.store_type = ZarrFile.StoreType.ZIP;
+  }
+
+  async init_from_url(url) {
+    this.store = new FetchStore(url)
+    this.root = await zarr.open(this.store, { kind: "group" });
+    this.store_type = ZarrFile.StoreType.S3;
   }
 
   /******** Attribute Management ********/
@@ -221,19 +235,26 @@ class ZarrFile {
   /******** Listing ********/
   async list_objects(full_path) {
     const objects = [];
-
     full_path = standardize_path(full_path);
 
-    const entries = (await this.store.info).entries;
-    for (const key of Object.keys(entries)) {
-      //console.log(key);
-      if (key.startsWith(full_path)) {
-        let obj = key.slice(full_path.length);
-        obj = obj.split("/")[0];
-        if (!obj.endsWith('zarr.json') && !objects.includes(obj)) {
-          objects.push(obj);
-        }
-      } 
+    if (this.store_type == ZarrFile.StoreType.ZIP) {
+      const entries = (await this.store.info).entries;
+      for (const key of Object.keys(entries)) {
+        //console.log(key);
+        if (key.startsWith(full_path)) {
+          let obj = key.slice(full_path.length);
+          obj = obj.split("/")[0];
+          if (!obj.endsWith('zarr.json') && !objects.includes(obj)) {
+            objects.push(obj);
+          }
+        } 
+      }
+    }
+    else if (this.store_type == ZarrFile.StoreType.S3) {
+
+    }
+    else {
+      throw new Error(this.store_type + ' is not supported!')
     }
     return objects;
   }
@@ -269,7 +290,15 @@ function get_zarr_object(id) {
 //create a zarr object and return an unique id (0 in case of error)
 async function init_file(file) {
   zarr_file = new ZarrFile();
-  await zarr_file.init(file);
+  if (file instanceof File) {
+    await zarr_file.init(file);
+  }
+  else if (typeof file == 'string') {
+    await zarr_file.init_from_url(file);
+  }
+  else {
+    throw new Error("'file' needs to be either a File object or a url!")
+  }
   //returns the id of the file
   //TODO: implement possibility of multiple files
   return 1;
