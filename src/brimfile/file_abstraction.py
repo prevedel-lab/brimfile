@@ -256,6 +256,16 @@ if use_h5:
 
     _AbstractFile = _h5File
 else:
+
+    class StoreType(Enum):
+        """
+        Enum to represent the type of store used by the Zarr file.
+        """
+        ZIP = 'zip'
+        ZARR = 'zarr'
+        S3 = 'S3'
+        AUTO = 'auto'
+
     import sys
     if "pyodide" in sys.modules:  # using javascript based zarr library
         from __main__ import _zarrFile
@@ -265,15 +275,6 @@ else:
         import numcodecs
 
         import importlib.util
-
-        class StoreType(Enum):
-            """
-            Enum to represent the type of store used by the Zarr file.
-            """
-            ZIP = 'zip'
-            ZARR = 'zarr'
-            S3 = 'S3'
-            AUTO = 'auto'
 
         class _zarrFile (FileAbstraction):
             def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
