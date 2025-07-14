@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-remote-store = ["zarr[remote]>=3"]
+remote-store = ["zarr[remote]>=3", "s3fs"]
 export-tiff = ["tifffile"]
 
 [project.urls]
