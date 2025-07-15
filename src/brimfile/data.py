@@ -819,7 +819,7 @@ class Data:
     @staticmethod
     def list_data_groups(file: FileAbstraction, retrieve_custom_name=False) -> list:
         """
-        List all data groups in the brim file.
+        List all data groups in the brim file. The list is ordered by index.
 
         Returns:
             list: A list of dictionaries, each containing:
@@ -842,6 +842,9 @@ class Data:
                 custom_name = get_object_name(file, path)
                 curr_obj_dict['custom_name'] = custom_name
             data_groups.append(curr_obj_dict)
+        
+        # Sort the data groups by index
+        data_groups.sort(key=lambda x: x['index'])
 
         return data_groups
 
