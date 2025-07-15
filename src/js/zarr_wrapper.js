@@ -77,6 +77,8 @@ zarrWorker.onmessage = (e) => {
   };
 
 const decoder = new TextDecoder();
+//variable that keeps track of whether a previous call to a worker returned
+let previous_called_returned = true;
 // Function to call a function in the worker in a synchronous way (i.e. waiting for the result)
 function callWorkerFunc(func, args, result_is_array=false) {
 /**
@@ -87,6 +89,12 @@ function callWorkerFunc(func, args, result_is_array=false) {
     if (!zarrWorker_initialized) {
         throw new Error("The zarr worker didn't finish initializing");
     }
+
+    if (!previous_called_returned) {
+        throw new Error("The previous call hasn't finished yet")
+    }
+    previous_called_returned = false;
+    
     let pyproxies = [];
     let args_proxy = null;
     if (args instanceof pyodide.ffi.PyProxy) {
@@ -110,13 +118,14 @@ function callWorkerFunc(func, args, result_is_array=false) {
     }
     const timeout_ms = 2000; 
     const r = Atomics.wait(sync_flags, RESULT_READY, 0, timeout_ms); // Wait for the result to be set
+    Atomics.store(sync_flags, RESULT_READY, 0); // Reset the result ready flag
+    previous_called_returned = true;
     if (r === "timed-out") {
         throw new Error(`The operation didn't complete within the timeout period of ${timeout_ms}ms!`);
     }
     if (r === "not-equal") {
         throw new Error("The zarr worker was in the wrong state!")
     }
-    Atomics.store(sync_flags, RESULT_READY, 0); // Reset the result ready flag
 
     if (result_is_array) {
         const obj = read_array_from_sab();
