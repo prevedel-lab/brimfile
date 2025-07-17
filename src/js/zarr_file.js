@@ -86,7 +86,8 @@ function setSerializedResult(result, result_is_array=false) {
   //notify the caller worker that the result is set
   Atomics.store(sync_flags, RESULT_READY, 1);
   if (1!==Atomics.notify(sync_flags, RESULT_READY)) {
-    throw new Error("The caller worker was not waiting for the result!");
+    // The call to Atomics.notify might have happened before the caller thread called atomics.wait
+    // this is still fine, as the call to Atomics.wait will return immediately (as RESULT_READY is set to 1)
   }
 };
 function setSerializedResultError(reason, result_is_array=false) {

@@ -93,7 +93,11 @@ function callWorkerFunc(func, args, result_is_array=false) {
     if (!previous_called_returned) {
         throw new Error("The previous call hasn't finished yet")
     }
-    previous_called_returned = false;
+    else { //prepare the state variable for calling the zarr worker
+        previous_called_returned = false;
+        // Reset the result ready flag, in case it is in the wrong state due to a previous failed call
+        Atomics.store(sync_flags, RESULT_READY, 0); 
+    }
     
     let pyproxies = [];
     let args_proxy = null;
@@ -124,7 +128,7 @@ function callWorkerFunc(func, args, result_is_array=false) {
         throw new Error(`The operation didn't complete within the timeout period of ${timeout_ms}ms!`);
     }
     if (r === "not-equal") {
-        throw new Error("The zarr worker was in the wrong state!")
+        //the zarr worker had already processed the results before we reached Atomics.wait
     }
 
     if (result_is_array) {
@@ -146,7 +150,9 @@ function init_zarr_wrapper() {
             class ZarrArray:
                 def __init__(self, id, dts):
                     self.id = id
-                    self.dts = dts
+                    self.dts = dts                
+                def __str__(self):
+                    return str(self.dts)
                 def __array__(self, dtype=None, copy=None):
                     #TODO: implement dtype and copy
                     # see https://numpy.org/doc/stable/user/basics.interoperability.html#dunder-array-interface
@@ -215,7 +221,7 @@ function init_zarr_wrapper() {
             
             # -------------------- Attribute Management --------------------
             def get_attr(self, full_path, attr_name):  
-                res = callWorkerFunc('get_attribute', {'id': self.id, 'full_path': full_path, 'attr_name':attr_name})
+                res = callWorkerFunc('get_attribute', {'id': self.id, 'full_path': str(full_path), 'attr_name':attr_name})
                 return _zarrFile.JsProxy_to_py(res)
             
             # -------------------- Group Management --------------------
@@ -229,13 +235,13 @@ function init_zarr_wrapper() {
             
             # -------------------- Listing --------------------
             def list_objects(self, full_path) -> list:
-                res = callWorkerFunc('list_objects', {'id': self.id, 'full_path': full_path})
+                res = callWorkerFunc('list_objects', {'id': self.id, 'full_path': str(full_path)})
                 return _zarrFile.JsProxy_to_py(res)
             def object_exists(self, full_path) -> bool:
-                res = callWorkerFunc('object_exists', {'id': self.id, 'full_path': full_path})
+                res = callWorkerFunc('object_exists', {'id': self.id, 'full_path': str(full_path)})
                 return _zarrFile.JsProxy_to_py(res)
             def list_attributes(self, full_path) -> list:
-                res = callWorkerFunc('list_attributes', {'id': self.id, 'full_path': full_path})
+                res = callWorkerFunc('list_attributes', {'id': self.id, 'full_path': str(full_path)})
                 return _zarrFile.JsProxy_to_py(res)
             
             # -------------------- Properties --------------------
