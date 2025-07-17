@@ -276,6 +276,55 @@ else:
 
         import importlib.util
 
+        
+        def _parse_storage_url(url):
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            scheme = parsed.scheme
+            netloc = parsed.netloc
+            path = parsed.path.lstrip('/')
+
+            # Case 1: Amazon S3 (virtual-hosted-style or path-style)
+            if "amazonaws.com" in netloc:
+                parts = netloc.split('.')
+                if parts[0] != 's3':  # virtual-hosted-style
+                    bucket = parts[0]
+                    endpoint = '.'.join(parts[1:])
+                    object_path = path
+                else:  # path-style
+                    path_parts = path.split('/', 1)
+                    bucket = path_parts[0]
+                    endpoint = netloc
+                    object_path = path_parts[1] if len(path_parts) > 1 else ''
+            # Case 2: Google Cloud Storage
+            elif "storage.googleapis.com" in netloc:
+                if netloc == "storage.googleapis.com":
+                    # path-style: https://storage.googleapis.com/bucket-name/object
+                    path_parts = path.split('/', 1)
+                    bucket = path_parts[0]
+                    endpoint = netloc
+                    object_path = path_parts[1] if len(path_parts) > 1 else ''
+                else:
+                    # virtual-hosted-style: https://bucket-name.storage.googleapis.com/object
+                    bucket = netloc.split('.')[0]
+                    endpoint = '.'.join(netloc.split('.')[1:])
+                    object_path = path
+            # Case 3: Custom endpoint or S3-compatible storage (MinIO, etc.)
+            else:
+                path_parts = path.split('/', 1)
+                bucket = path_parts[0]
+                endpoint = netloc
+                object_path = path_parts[1] if len(path_parts) > 1 else ''
+
+            return {
+                'protocol': scheme,
+                'bucket': bucket,
+                'endpoint': endpoint,
+                'object_path': object_path
+            }
+        
+
         class _zarrFile (FileAbstraction):
             def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
                 """
@@ -295,7 +344,7 @@ else:
                     if not filename.endswith('.zarr'):
                         filename += '.zarr'
                 elif store_type == st.AUTO:
-                    if filename.startswith('http'):
+                    if filename.startswith('http') or filename.startswith('s3'):
                         store_type = st.S3
                     elif filename.endswith('.zip'):
                         store_type = st.ZIP
@@ -303,7 +352,7 @@ else:
                         store_type = st.ZARR
                     else:
                         raise ValueError(
-                            "When using 'auto' store_type, the filename must end with '.zip' or '.zarr'.")
+                            "When using 'auto' store_type, the filename must end with '.zip' or '.zarr' or start with 'http' or 's3'.")
 
                 match store_type:
                     case st.ZIP:
@@ -318,24 +367,12 @@ else:
                             raise ModuleNotFoundError(
                                 "The fsspec module is required for using S3 storage")
                         import fsspec
-                        import re
-                        # Regex to parse the URL
-                        pattern = r'^(https?)://([^/]+)/?(.*)$'
-                        match = re.match(pattern, filename)
-                        if not match:
-                            raise ValueError(
-                                f"Invalid URL format: {filename}. Expected format is 'https://domain/path'.")
-                        protocol = match.group(1)  # 'https'
-                        if protocol != 'https':
-                            raise ValueError(
-                                f"Unsupported protocol '{protocol}'. Only 'https' is supported.")
-                        endpoint_url = match.group(2)   # 'endpoint'
-                        path = match.group(3)           # 'name'                            
+                        parsed_url = _parse_storage_url(filename)                           
 
                         fs = fsspec.filesystem('s3', anon=True, asynchronous=True,
-                                            client_kwargs={'endpoint_url': f"{protocol}://{endpoint_url}"})
+                                            client_kwargs={'endpoint_url': f"{parsed_url['protocol']}://{parsed_url['endpoint']}"})
 
-                        store = zarr.storage.FsspecStore(fs, path = path,
+                        store = zarr.storage.FsspecStore(fs, path = f"{parsed_url['bucket']}/{parsed_url['object_path']}",
                                                         read_only=(mode == 'r'))
                     case _:
                         raise ValueError(
