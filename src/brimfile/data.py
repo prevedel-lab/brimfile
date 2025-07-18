@@ -427,11 +427,19 @@ class Data:
             pt_type = Data.AnalysisResults.PeakType
             data = None
             if pt == pt_type.average:
-                data = np.abs(
-                    np.array(self._get_quantity(qt, pt_type.Stokes, index)))
-                data += np.abs(np.array(self._get_quantity(qt,
-                               pt_type.AntiStokes, index)))
-                data /= 2
+                peaks = self.list_existing_peak_types(index)
+                match len(peaks):
+                    case 0:
+                        raise ValueError(
+                            "No peaks found for the specified index. Cannot compute average.")
+                    case 1:
+                        data = np.array(self._get_quantity(qt, peaks[0], index))
+                    case 2:
+                        data = np.abs(
+                            np.array(self._get_quantity(qt, peaks[0], index)))
+                        data += np.abs(np.array(self._get_quantity(qt,
+                                    peaks[1], index)))
+                        data /= 2
             else:
                 data = np.array(self._get_quantity(qt, pt, index))
             sm = np.array(self._spatial_map)
@@ -460,11 +468,21 @@ class Data:
             pt_type = Data.AnalysisResults.PeakType
             value = None
             if pt == pt_type.average:
-                data = self._get_quantity(qt, pt_type.Stokes, index)
-                value = np.abs(data[int(i), ...])
-                data = self._get_quantity(qt, pt_type.AntiStokes, index)
-                value += np.abs(data[int(i), ...])
-                value /= 2
+                value = None
+                peaks = self.list_existing_peak_types(index)
+                match len(peaks):
+                    case 0:
+                        raise ValueError(
+                            "No peaks found for the specified index. Cannot compute average.")
+                    case 1:
+                        data = self._get_quantity(qt, peaks[0], index)
+                        value = data[int(i), ...]
+                    case 2:
+                        data = self._get_quantity(qt, peaks[0], index)
+                        value = np.abs(data[int(i), ...])
+                        data = self._get_quantity(qt, peaks[1], index)
+                        value += np.abs(data[int(i), ...])
+                        value /= 2
             else:
                 data = self._get_quantity(qt, pt, index)
                 value = data[int(i), ...]
