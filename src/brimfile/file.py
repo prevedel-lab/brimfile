@@ -94,7 +94,7 @@ class File:
         Parameters:
             PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. It must be 4D with dimensions z, y, x, spectrum
             frequency (np.ndarray): The frequency data corresponding to the PSD. It must be 4D or 1D (in which case the frequency axis is assumed the same for all the spatial coordinates)
-            px_size_um (tuple): A tuple of 3 elements, in the order z,y,x, corresponding to the pixel size in um
+            px_size_um (tuple): A tuple of 3 elements, in the order z,y,x, corresponding to the pixel size in um. Unused dimensions can be set to None.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new data group. Defaults to None.
             compression (FileAbstraction.Compression, optional): The compression method to use for the data. Defaults to FileAbstraction.Compression.DEFAULT.
