@@ -1,6 +1,9 @@
-import ZipStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/zip/+esm";
-import FetchStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/fetch/+esm";
 import * as zarr from "https://cdn.jsdelivr.net/npm/zarrita/+esm";
+//Imports for reading zip files
+import ZipStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/zip/+esm";
+//imports for reading zarr files from S3 buckets
+import FetchStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/fetch/+esm";
+import { XMLParser } from "https://cdn.jsdelivr.net/npm/fast-xml-parser/+esm";
 
 //////////////////////////////////////////////////////////////////
 /******* definition of constants shared between the two workers *******/
@@ -234,6 +237,55 @@ class ZarrFile {
   }
 
   /******** Listing ********/
+
+  async #list_S3keys(full_path){
+
+    function split_path(url, full_path) {
+      url = standardize_path(url).slice(0,-1);
+      full_path = standardize_path(full_path);
+
+      let path = [];
+      const last_slash = url.lastIndexOf('/');
+      path.endpoint = url.slice(0, last_slash+1)
+      path.object = url.slice(last_slash+1) + '/' + full_path
+      return path;
+    }
+    const path = split_path(this.store.url, full_path);
+
+    let queries = "list-type=2&delimiter=/";
+    queries += "&prefix="+path.object;
+
+    let url = path.endpoint + "?" + queries;
+    url = encodeURI(url);
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+    const xmlText = await response.text();
+
+    // Parse XML using fast-xml-parser
+    const parser = new XMLParser();
+    const xmlObj = parser.parse(xmlText);
+
+    function ExtractKeyFromPrefix (x) {
+        let p = x.Prefix;
+        if (p.endsWith('/')) {
+            p = p.slice(0, -1)
+        }
+        p = p.split('/').pop()
+        return p;
+    }
+    // Extract CommonPrefixes
+    let prefixes = [];
+    if (xmlObj.ListBucketResult && xmlObj.ListBucketResult.CommonPrefixes) {
+        const cp = xmlObj.ListBucketResult.CommonPrefixes;
+        if (Array.isArray(cp)) {
+            prefixes = cp.map(ExtractKeyFromPrefix);
+        } else if (cp.Prefix) {
+            prefixes = [ExtractKeyFromPrefix(cp.Prefix)];
+        }
+    }
+    return prefixes;
+  }
   async list_objects(full_path) {
     const objects = [];
     full_path = standardize_path(full_path);
@@ -252,7 +304,7 @@ class ZarrFile {
       }
     }
     else if (this.store_type == ZarrFile.StoreType.S3) {
-
+      return this.#list_S3keys(full_path);
     }
     else {
       throw new Error(this.store_type + ' is not supported!')
