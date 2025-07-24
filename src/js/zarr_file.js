@@ -304,7 +304,8 @@ class ZarrFile {
       }
     }
     else if (this.store_type == ZarrFile.StoreType.S3) {
-      return this.#list_S3keys(full_path);
+      const bucket = standardize_path(this.filename);
+      return this.#list_S3keys(bucket+full_path);
     }
     else {
       throw new Error(this.store_type + ' is not supported!')
@@ -345,9 +346,12 @@ async function init_file(file) {
   zarr_file = new ZarrFile();
   if (file instanceof File) {
     await zarr_file.init(file);
+    this.filename = file.name;
   }
   else if (typeof file == 'string') {
+    file = standardize_path(file);
     await zarr_file.init_from_url(file);
+    this.filename = file;
   }
   else {
     throw new Error("'file' needs to be either a File object or a url!")
