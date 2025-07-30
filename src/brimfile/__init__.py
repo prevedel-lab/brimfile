@@ -51,7 +51,7 @@ filename = 'path/to/your/file.brim.zip'
 f = brim.File(filename)
 
 # or create a new one
-f = brim.File.create(filename, store_type='zip')
+f = brim.File.create(filename)
 ```
 
 ### Data
@@ -178,12 +178,12 @@ def generate_data():
 Now we can use this function to create a brim file with a data group and some metadata:
 
 ``` Python
-    from brimfile import File, Data, Metadata
+    from brimfile import File, Data, Metadata, StoreType
     from datetime import datetime
 
     filename = 'path/to/your/file.brim.zip' 
 
-    f = File.create(filename, store_type='auto')
+    f = File.create(filename, store_type=StoreType.AUTO)
 
     PSD, freq_GHz, (dz,dy,dx), shift_GHz, width_GHz = generate_data()
     
