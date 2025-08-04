@@ -127,9 +127,9 @@ class File:
 
     def create_data_group_raw(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, timestamp: np.ndarray = None, index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
-        Adds a new data entry to the file. Check the documentation for `brim.data.Data.add_data` for more details on the parameters.
+        Adds a new data entry to the file. Check the documentation for `brimfile.data.Data.add_data` for more details on the parameters.
         Parameters:
-            PSD (np.ndarray): The Power Spectral Density (PSD) data to be added.
+            PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. The last dimension contains the spectra.
             frequency (np.ndarray): The frequency data corresponding to the PSD.
             scanning (dict): Metadata related to the scanning process. See Data.add_data for more details.
             timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.

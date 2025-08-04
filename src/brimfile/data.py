@@ -722,7 +722,7 @@ class Data:
         the required specifications before adding them.
 
         Args:
-            PSD (np.ndarray): A 2D numpy array representing the Power Spectral Density (PSD) data.
+            PSD (np.ndarray): A 2D numpy array representing the Power Spectral Density (PSD) data. The last dimension contains the spectra.
             frequency (np.ndarray): A 1D or 2D numpy array representing the frequency data. 
                 It must be broadcastable to the shape of the PSD array.
             scanning (dict): A dictionary containing scanning-related data. It may include:
