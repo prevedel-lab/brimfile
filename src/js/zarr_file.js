@@ -177,12 +177,14 @@ class ZarrFile {
 
   async init(file) {
     this.store = await ZipStore.fromBlob(file);
+    this.filename = file.name;
     this.root = await zarr.open(this.store, { kind: "group" });
     this.store_type = ZarrFile.StoreType.ZIP;
   }
 
   async init_from_url(url) {
-    this.store = new FetchStore(url)
+    this.store = new FetchStore(url);
+    this.filename = url;
     this.root = await zarr.open(this.store, { kind: "group" });
     this.store_type = ZarrFile.StoreType.S3;
   }
@@ -346,12 +348,10 @@ async function init_file(file) {
   zarr_file = new ZarrFile();
   if (file instanceof File) {
     await zarr_file.init(file);
-    this.filename = file.name;
   }
   else if (typeof file == 'string') {
     file = standardize_path(file);
     await zarr_file.init_from_url(file);
-    this.filename = file;
   }
   else {
     throw new Error("'file' needs to be either a File object or a url!")
