@@ -6,6 +6,29 @@ import FetchStore from "https://cdn.jsdelivr.net/npm/@zarrita/storage/fetch/+esm
 import { XMLParser } from "https://cdn.jsdelivr.net/npm/fast-xml-parser/+esm";
 
 //////////////////////////////////////////////////////////////////
+// Helper function
+function serializeError(err) {
+  if (typeof err !== 'object' || err === null) {
+    return { message: String(err), name: 'Error' };
+  }
+
+  const plain = {
+    name: err.name || 'Error',
+    message: err.message || String(err),
+    stack: err.stack || '',
+  };
+
+  // Optionally include other custom properties
+  for (const key of Object.getOwnPropertyNames(err)) {
+    if (!(key in plain)) {
+      plain[key] = err[key];
+    }
+  }
+
+  return plain;
+}
+
+
 /******* definition of constants shared between the two workers *******/
 /*
 The SharedArrayBuffer sab contains a header of size 'sab_payload_offset' and a payload of size 'sab_payload_size' (sizes in bytes)
@@ -99,7 +122,7 @@ function setSerializedResultError(reason, result_is_array=false) {
     setSerializedResult(new Float64Array([]), true)
   }
   else {
-    setSerializedResult({isError: true, Err:reason})
+    setSerializedResult({isError: true, Err:serializeError(reason)})
   }
 };
 

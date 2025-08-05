@@ -1,4 +1,19 @@
 //////////////////////////////////////////////////////////////////
+// Helper function
+function reviveError(obj) {
+    const err = new Error(obj.message);
+    err.name = obj.name || 'Error';
+    err.stack = obj.stack || '';
+
+    for (const key in obj) {
+        if (!['name', 'message', 'stack'].includes(key)) {
+            err[key] = obj[key];
+        }
+    }
+
+    return err;
+}
+
 /******* definition of constants shared between the two workers *******/
 /*
 The SharedArrayBuffer sab contains a header of size 'sab_payload_offset' and a payload of size 'sab_payload_size' (sizes in bytes)
@@ -6,7 +21,7 @@ The header contains two int32 numbers at RESULT_READY and DATA_SIZE
  */
 
 //starting of the payload in bytes
-const sab_payload_offset = 2*4
+const sab_payload_offset = 2 * 4
 
 //indices of the header elements (type int32)
 const RESULT_READY = 0;
@@ -17,20 +32,20 @@ const DATA_SIZE = 1;
 // n_dims uint32: cotains the size of each dimensions
 //    N   float64: the array containing the actual data; IMPORTANT: the offset is ceiled to a multiple of 8
 function read_array_from_sab() {
-  //get the shape of the array
-  const n_dims = (new Uint32Array(sab, sab_payload_offset,1))[0];
-  const shape = new Uint32Array(sab, sab_payload_offset+4, n_dims);
-  let tot_size = 1;
-  for (let i=0; i<shape.length; i++) {tot_size*=shape[i]}
-  //calculate the offset of the array
-  const array_payload_offset = 8* Math.ceil( (sab_payload_offset+4*(1+n_dims)) / 8)
-  const array_payload = new Float64Array(sab, array_payload_offset, tot_size);
-  const res = {shape: shape, data: array_payload};
-  return res;
+    //get the shape of the array
+    const n_dims = (new Uint32Array(sab, sab_payload_offset, 1))[0];
+    const shape = new Uint32Array(sab, sab_payload_offset + 4, n_dims);
+    let tot_size = 1;
+    for (let i = 0; i < shape.length; i++) { tot_size *= shape[i] }
+    //calculate the offset of the array
+    const array_payload_offset = 8 * Math.ceil((sab_payload_offset + 4 * (1 + n_dims)) / 8)
+    const array_payload = new Float64Array(sab, array_payload_offset, tot_size);
+    const res = { shape: shape, data: array_payload };
+    return res;
 }
 
 function read_json_from_sab() {
-  if (data_size[0]>sab.byteLength-sab_payload_offset) {
+    if (data_size[0] > sab.byteLength - sab_payload_offset) {
         throw new Error("The worker set a payload larger than the buffer size")
     }
     const worker_data = payload_unit8array.slice(0, data_size[0])
@@ -41,11 +56,11 @@ function read_json_from_sab() {
 
 ////////////////////////////////////////////////////////////////
 
-const growable_sab_supported = ( () => {
-    try {new SharedArrayBuffer(1, {maxByteLength:1}); return true;}catch {return false;}
+const growable_sab_supported = (() => {
+    try { new SharedArrayBuffer(1, { maxByteLength: 1 }); return true; } catch { return false; }
 })();
 // If SharedArrayBuffer is growable set a small size to start with 
-const initial_sab_payload_size = growable_sab_supported? 10e6 : 200e6;
+const initial_sab_payload_size = growable_sab_supported ? 10e6 : 200e6;
 
 if (!isSecureContext) {
     throw new Error("No secure context!")
@@ -55,14 +70,14 @@ if (!crossOriginIsolated) {
 }
 
 //sab_payload_offset bytes for flags + initial_sab_payload_size for the actual data 
-const sab = (() => {const size =sab_payload_offset+initial_sab_payload_size; return growable_sab_supported ? new SharedArrayBuffer(size, {maxByteLength:1e9}) : new SharedArrayBuffer(size)})();
-const sync_flags = new Int32Array(sab, 4*RESULT_READY, 1);
-const data_size = new Int32Array(sab, 4*DATA_SIZE, 1);
+const sab = (() => { const size = sab_payload_offset + initial_sab_payload_size; return growable_sab_supported ? new SharedArrayBuffer(size, { maxByteLength: 1e9 }) : new SharedArrayBuffer(size) })();
+const sync_flags = new Int32Array(sab, 4 * RESULT_READY, 1);
+const data_size = new Int32Array(sab, 4 * DATA_SIZE, 1);
 const payload_unit8array = new Uint8Array(sab, sab_payload_offset);
 
 //Initialize the worker
 let zarrWorker_initialized = false
-const zarrWorker = new Worker('./zarr_file.js', {type: 'module'});
+const zarrWorker = new Worker('./zarr_file.js', { type: 'module' });
 zarrWorker.postMessage({
     type: "init",
     sab: sab
@@ -74,18 +89,18 @@ zarrWorker.onmessage = (e) => {
             zarrWorker_initialized = true
             break;
     }
-  };
+};
 
 const decoder = new TextDecoder();
 //variable that keeps track of whether a previous call to a worker returned
 let previous_called_returned = true;
 // Function to call a function in the worker in a synchronous way (i.e. waiting for the result)
-function callWorkerFunc(func, args, result_is_array=false) {
-/**
- * Call a function in the zarr worker
- * @param  {String} func the name of the function to call 
- * @param  {Object} args the arguments to pass to the function as a dictionary
- */
+function callWorkerFunc(func, args, result_is_array = false) {
+    /**
+     * Call a function in the zarr worker
+     * @param  {String} func the name of the function to call 
+     * @param  {Object} args the arguments to pass to the function as a dictionary
+     */
     if (!zarrWorker_initialized) {
         throw new Error("The zarr worker didn't finish initializing");
     }
@@ -96,14 +111,14 @@ function callWorkerFunc(func, args, result_is_array=false) {
     else { //prepare the state variable for calling the zarr worker
         previous_called_returned = false;
         // Reset the result ready flag, in case it is in the wrong state due to a previous failed call
-        Atomics.store(sync_flags, RESULT_READY, 0); 
+        Atomics.store(sync_flags, RESULT_READY, 0);
     }
-    
+
     let pyproxies = [];
     let args_proxy = null;
     if (args instanceof pyodide.ffi.PyProxy) {
         args_proxy = args
-        args = args.toJs({dict_converter : Object.fromEntries, pyproxies: pyproxies})
+        args = args.toJs({ dict_converter: Object.fromEntries, pyproxies: pyproxies })
     }
 
     zarrWorker.postMessage({
@@ -114,13 +129,13 @@ function callWorkerFunc(func, args, result_is_array=false) {
 
     //clean the js proxies that were possibly created during the function call
     //see https://pyodide.org/en/stable/usage/type-conversions.html
-    if (args_proxy!==null) {
-        for(let px of pyproxies){
+    if (args_proxy !== null) {
+        for (let px of pyproxies) {
             px.destroy();
         }
         args_proxy.destroy();
     }
-    const timeout_ms = 2000; 
+    const timeout_ms = 2000;
     const r = Atomics.wait(sync_flags, RESULT_READY, 0, timeout_ms); // Wait for the result to be set
     Atomics.store(sync_flags, RESULT_READY, 0); // Reset the result ready flag
     previous_called_returned = true;
@@ -137,9 +152,9 @@ function callWorkerFunc(func, args, result_is_array=false) {
     }
     else {
         const obj = read_json_from_sab();
-        if (typeof obj.isError !== 'undefined' && typeof obj.Err !== 'undefined') 
-            {if (obj.isError) throw new Error(obj.Err.name);}
-        return obj;}
+        if (typeof obj.isError !== 'undefined' && typeof obj.Err !== 'undefined') { if (obj.isError) throw new Error(reviveError(obj.Err)); }
+        return obj;
+    }
 };
 
 function init_zarr_wrapper() {
@@ -252,8 +267,8 @@ function init_zarr_wrapper() {
 
 // Loads the Zarr and create a bls_file in the globals of pyodide
 function loadZarrFile(file) {
-    const file_id = callWorkerFunc("init_file", {file:file})
-    if (file_id ==0) {return false;}
+    const file_id = callWorkerFunc("init_file", { file: file })
+    if (file_id == 0) { return false; }
     pyodide.globals.set("_bls_file_id_temp", file_id);
     pyodide.globals.set("_bls_file_filename_temp", file.name);
 
