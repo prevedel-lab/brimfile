@@ -373,7 +373,7 @@ class Data:
             full_path = concatenate_paths(self._path, dt_name)
             return units.add_to_object(self._file, full_path, un)
 
-        def save_image_to_OMETiff(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0, filename: str = None):
+        def save_image_to_OMETiff(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0, filename: str = None) -> str:
             """
             Saves the image corresponding to the specified quantity and index to an OMETiff file.
 
@@ -412,6 +412,7 @@ class Data:
                     'PhysicalSizeZUnit': px_size[0].units,
                 }
                 tif.write(img, metadata=metadata)
+            return filename
 
         def get_image(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
             """
