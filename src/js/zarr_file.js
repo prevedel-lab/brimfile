@@ -275,7 +275,7 @@ class ZarrFile {
       path.object = url.slice(last_slash+1) + '/' + full_path
       return path;
     }
-    const path = split_path(this.store.url, full_path);
+    const path = split_path(this.filename, full_path);
 
     let queries = "list-type=2&delimiter=/";
     queries += "&prefix="+path.object;
@@ -329,8 +329,7 @@ class ZarrFile {
       }
     }
     else if (this.store_type == ZarrFile.StoreType.S3) {
-      const bucket = standardize_path(this.filename);
-      return this.#list_S3keys(bucket+full_path);
+      return this.#list_S3keys(full_path);
     }
     else {
       throw new Error(this.store_type + ' is not supported!')
