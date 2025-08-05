@@ -81,8 +81,12 @@ class Data:
                     try:
                         res = np.array(self._file.open_dataset(
                             concatenate_paths(sm_path, coord)))
+                        res = np.squeeze(res)  # remove single-dimensional entries
                     except Exception:
                         pass
+                    if len(res.shape) > 1:
+                        raise ValueError(
+                            f"The 'Spatial_map/{coord}' dataset is not a 1D array as expected")
                     return res
 
                 def check_coord_array(arr, size):
