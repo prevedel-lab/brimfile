@@ -178,21 +178,21 @@ class ZarrFile {
   async init(file) {
     this.store = await ZipStore.fromBlob(file);
     this.filename = file.name;
-    this.root = await zarr.open(this.store, { kind: "group" });
+    this.root = await zarr.open.v3(this.store, { kind: "group" });
     this.store_type = ZarrFile.StoreType.ZIP;
   }
 
   async init_from_url(url) {
     this.store = new FetchStore(url);
     this.filename = url;
-    this.root = await zarr.open(this.store, { kind: "group" });
+    this.root = await zarr.open.v3(this.store, { kind: "group" });
     this.store_type = ZarrFile.StoreType.S3;
   }
 
   /******** Attribute Management ********/
   async get_attribute(full_path, attr_name) {
     full_path = standardize_path(full_path);
-    const obj = await zarr.open(this.root.resolve(full_path));
+    const obj = await zarr.open.v3(this.root.resolve(full_path));
     return obj.attrs[attr_name];
   }
 
@@ -218,12 +218,12 @@ class ZarrFile {
     full_path = standardize_path(full_path);
     // for now simply return the path since the array object itself is not json transferrable
     return full_path
-    const arr = await zarr.open(this.root.resolve(full_path), { kind: "array" });
+    const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return arr
   }
 
   async get_array_slice(full_path, indices){
-    const array = await zarr.open(this.root.resolve(full_path), { kind: "array" });
+    const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     function undef2null(obj) {return obj===undefined?null:obj;}
     let js_indices = [];
     for (let i of indices) {
@@ -234,7 +234,7 @@ class ZarrFile {
   }
 
   async get_array_shape(full_path){
-    const array = await zarr.open(this.root.resolve(full_path), { kind: "array" });
+    const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return array.shape;
   }
 
@@ -318,7 +318,7 @@ class ZarrFile {
   async object_exists(full_path) {
     full_path = standardize_path(full_path);
     try {
-      const obj = await zarr.open(this.root.resolve(full_path));
+      const obj = await zarr.open.v3(this.root.resolve(full_path));
       return true;
     }
     catch (e) {
@@ -328,7 +328,7 @@ class ZarrFile {
 
   async list_attributes(full_path) {
     full_path = standardize_path(full_path);
-    const obj = await zarr.open(this.root.resolve(full_path));
+    const obj = await zarr.open.v3(this.root.resolve(full_path));
     return Object.keys(obj.attrs);
   }
 }
