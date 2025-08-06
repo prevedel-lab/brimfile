@@ -170,6 +170,9 @@ class Data:
         Raises:
             IndexError: If the index is out of range for the PSD dataset.
         """
+        # index = -1 corresponds to no spectrum
+        if index < 0:
+            return None, None, None, None
         PSD = self._file.open_dataset(concatenate_paths(
             self._path, brim_obj_names.data.PSD))
         if index >= PSD.shape[0]:
@@ -449,6 +452,7 @@ class Data:
                 data = np.array(self._get_quantity(qt, pt, index))
             sm = np.array(self._spatial_map)
             img = data[sm, ...]
+            img[sm<0, ...] = np.nan  # set invalid pixels to NaN
             return img, self._spatial_map_px_size
 
         def get_quantity_at_pixel(self, coord: tuple, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
@@ -469,6 +473,9 @@ class Data:
                     "'coord' must have 3 elements corresponding to z, y, x")
             i = self._spatial_map[*coord]
             assert i.size == 1
+            if i<0:
+                return np.nan  # invalid pixel
+            i = int(i)
 
             pt_type = Data.AnalysisResults.PeakType
             value = None
@@ -481,16 +488,16 @@ class Data:
                             "No peaks found for the specified index. Cannot compute average.")
                     case 1:
                         data = self._get_quantity(qt, peaks[0], index)
-                        value = data[int(i), ...]
+                        value = data[i, ...]
                     case 2:
                         data = self._get_quantity(qt, peaks[0], index)
-                        value = np.abs(data[int(i), ...])
+                        value = np.abs(data[i, ...])
                         data = self._get_quantity(qt, peaks[1], index)
-                        value += np.abs(data[int(i), ...])
+                        value += np.abs(data[i, ...])
                         value /= 2
             else:
                 data = self._get_quantity(qt, pt, index)
-                value = data[int(i), ...]
+                value = data[i, ...]
             return value
 
         @classmethod
