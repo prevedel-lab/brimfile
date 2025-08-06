@@ -65,15 +65,8 @@ class Data:
         
         if self._file.object_exists(cv_path):
             cv = self._file.open_dataset(cv_path)
-            if load_in_memory:
-                cv = np.array(cv)
-                #find the largest integer type that can hold the values in cv
-                mx = cv.max().astype(np.int64)
-                # if cv contains -1 we have to use a signed integer type
-                if np.any(cv < 0):
-                    mx = -mx
-                # convert cv to the smallest integer type that can hold the values
-                cv = cv.astype(np.min_scalar_type(mx))
+
+            #read the pixel size from the 'Cartesian visualisation' dataset
             px_size_val = 3*(1,)
             px_size_units = None
             try:
@@ -90,6 +83,16 @@ class Data:
                     px_size += (Metadata.Item(1, None), )
                 else:
                     px_size += (Metadata.Item(px_size_val[i], px_size_units), )
+
+            if load_in_memory:
+                cv = np.array(cv)
+                #find the largest integer type that can hold the values in cv
+                mx = cv.max().astype(np.int64)
+                # if cv contains -1 we have to use a signed integer type
+                if np.any(cv < 0):
+                    mx = -mx
+                # convert cv to the smallest integer type that can hold the values
+                cv = cv.astype(np.min_scalar_type(mx))
 
         elif self._file.object_exists(sm_path):
             def load_spatial_map_from_file(self):
