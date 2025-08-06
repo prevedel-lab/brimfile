@@ -56,11 +56,13 @@ class Data:
             The spatial map and the corresponding pixel size as a tuple of 3 Metadata.Item, both in the order z, y, x.
         """
         cv = None
-        px_size = 3*(Metadata.Item(value=np.nan, units=None),)
+        px_size = 3*(Metadata.Item(value=1, units=None),)
+
         cv_path = concatenate_paths(
             self._path, brim_obj_names.data.cartesian_visualisation)
         sm_path = concatenate_paths(
             self._path, brim_obj_names.data.spatial_map)
+        
         if self._file.object_exists(cv_path):
             cv = self._file.open_dataset(cv_path)
             if load_in_memory:
@@ -72,18 +74,22 @@ class Data:
                     mx = -mx
                 # convert cv to the smallest integer type that can hold the values
                 cv = cv.astype(np.min_scalar_type(mx))
-            px_size_val = 3*(np.nan,)
+            px_size_val = 3*(1,)
             px_size_units = None
             try:
                 px_size_val = self._file.get_attr(cv, 'element_size')
-                px_size_units = units.of_attribute(
-                    self._file, cv, 'element_size')
             except Exception:
                 warnings.warn(
-                    "No pixel size / units defined for Cartesian visualisation")
-            finally:
-                px_size = tuple(Metadata.Item(
-                    px_size_val[i], px_size_units) for i in range(3))
+                    "No pixel size defined for Cartesian visualisation")            
+            px_size_units = units.of_attribute(
+                    self._file, cv, 'element_size')
+            px_size = ()
+            for i in range(3):
+                # if px_size_val[i] is None, set it to 1 and px_size_units to None
+                if px_size_val[i] is None:
+                    px_size += (Metadata.Item(1, None), )
+                else:
+                    px_size += (Metadata.Item(px_size_val[i], px_size_units), )
 
         elif self._file.object_exists(sm_path):
             def load_spatial_map_from_file(self):
@@ -122,7 +128,7 @@ class Data:
             def calculate_step(x):
                 n = len(np.unique(x))
                 if n == 1:
-                    d = np.nan
+                    d = None
                 else:
                     d = (np.max(x)-np.min(x))/(n-1)
                 return n, d
@@ -139,8 +145,15 @@ class Data:
             cv = np.reshape(indices, (nZ, nY, nX))
 
             px_size_units = units.of_object(self._file, sm_path)
-            px_size = tuple(Metadata.Item(px_sz, px_size_units)
-                            for px_sz in (dZ, dY, dX))
+            px_size = ()
+            for i in range(3):
+                px_sz = (dZ, dY, dX)[i]
+                px_unit = px_size_units
+                if px_sz is None:
+                    px_sz = 1
+                    px_unit = None
+                px_size += (Metadata.Item(px_sz, px_unit),)
+
         return cv, px_size
 
     def get_PSD(self) -> tuple:
@@ -802,7 +815,7 @@ class Data:
             if 'Cartesian_visualisation_pixel' in scanning:
                 if len(scanning['Cartesian_visualisation_pixel']) != 3:
                     raise ValueError(
-                        "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to nan if not used)")
+                        "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
             else:
                 warnings.warn(
                     "It is recommended to add 'Cartesian_visualisation_pixel' to the scanning dictionary, to define the pixel size")
