@@ -780,7 +780,7 @@ class Data:
                     "Cartesian_visualisation must be a 3D numpy array")
             if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
                 raise ValueError(
-                    "Cartesian_visualisation values must be between 0 and 1")
+                    "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
             if 'Cartesian_visualisation_pixel' in scanning:
                 if len(scanning['Cartesian_visualisation_pixel']) != 3:
                     raise ValueError(
