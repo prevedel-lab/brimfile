@@ -45,11 +45,13 @@ class Data:
         """
         return int(self._path.split('/')[-1].split('_')[-1])
 
-    def _load_spatial_mapping(self) -> tuple:
+    def _load_spatial_mapping(self, load_in_memory: bool=True) -> tuple:
         """
         Load a spatial mapping in the same format as 'Cartesian visualisation',
         irrespectively on whether 'Spatial_map' is defined instead.
-        nans are used for "empty" pixels in the image
+        -1 is used for "empty" pixels in the image
+        Args:
+            load_in_memory (bool): Specify whether the map should be forced to load in memory or just opened as a dataset.
         Returns:
             The spatial map and the corresponding pixel size as a tuple of 3 Metadata.Item, both in the order z, y, x.
         """
@@ -61,6 +63,15 @@ class Data:
             self._path, brim_obj_names.data.spatial_map)
         if self._file.object_exists(cv_path):
             cv = self._file.open_dataset(cv_path)
+            if load_in_memory:
+                cv = np.array(cv)
+                #find the largest integer type that can hold the values in cv
+                mx = cv.max().astype(np.int64)
+                # if cv contains -1 we have to use a signed integer type
+                if np.any(cv < 0):
+                    mx = -mx
+                # convert cv to the smallest integer type that can hold the values
+                cv = cv.astype(np.min_scalar_type(mx))
             px_size_val = 3*(np.nan,)
             px_size_units = None
             try:
