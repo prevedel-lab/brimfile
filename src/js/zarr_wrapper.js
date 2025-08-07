@@ -207,7 +207,7 @@ function init_zarr_wrapper() {
                     data = _zarrFile.JsProxy_to_py(res.data)
                     shape = _zarrFile.JsProxy_to_py(res.shape)
                     data = np.array(data)
-                    data = np.reshape(data, shape).flatten()
+                    data = np.reshape(data, shape)
                     return data
                 @property
                 def shape(self):
