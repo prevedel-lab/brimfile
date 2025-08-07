@@ -211,8 +211,12 @@ function init_zarr_wrapper() {
                     return data
                 @property
                 def shape(self):
-                    res = callWorkerFunc('get_array_shape', {'id': self.id, 'full_path': self.dts})
-                    return _zarrFile.JsProxy_to_py(res)
+                    if hasattr(self, '_shape'):
+                        return self._shape
+                    else:
+                        res = callWorkerFunc('get_array_shape', {'id': self.id, 'full_path': self.dts})
+                        self._shape = _zarrFile.JsProxy_to_py(res)
+                        return self._shape
                 @property
                 def size(self):
                     return np.prod(self.shape)
