@@ -8,6 +8,8 @@ from .utils import concatenate_paths, list_objects_matching_pattern, get_object_
 
 from .metadata import Metadata
 
+from numbers import Number
+
 from . import units
 from .constants import brim_obj_names
 
@@ -78,11 +80,12 @@ class Data:
                     self._file, cv, 'element_size')
             px_size = ()
             for i in range(3):
-                # if px_size_val[i] is None, set it to 1 and px_size_units to None
-                if px_size_val[i] is None:
-                    px_size += (Metadata.Item(1, None), )
-                else:
+                # if px_size_val[i] is not a number, set it to 1 and px_size_units to None
+                if isinstance(px_size_val[i], Number):
                     px_size += (Metadata.Item(px_size_val[i], px_size_units), )
+                else:
+                    px_size += (Metadata.Item(1, None), )
+                    
 
             if load_in_memory:
                 cv = np.array(cv)
