@@ -208,6 +208,15 @@ function init_zarr_wrapper() {
                     shape = _zarrFile.JsProxy_to_py(res.shape)
                     data = np.array(data)
                     data = np.reshape(data, shape)
+                    
+                    # remove singleton dimensions
+                    singleton_dims = ();
+                    for i, ind in enumerate(index):
+                        if isinstance(ind, int):
+                            singleton_dims += (i,)
+                    if len(singleton_dims)>0:
+                        data = np.squeeze(data, axis=singleton_dims)
+
                     return data
                 @property
                 def shape(self):
