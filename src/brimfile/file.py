@@ -32,6 +32,10 @@ class File:
 
             Args:
                 filename (str): Path to the brim file.
+                mode: {'r', 'r+', 'a', 'w', 'w-'} the mode for opening the file (default is 'r' for read-only).
+                            See the definition of `mode` in `brimfile.file_abstraction._zarrFile.__init__()` for more details.
+                            'r' means read only (must exist); 'r+' means read/write (must exist);
+                            'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
                 store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'auto'.
             """
             self._file = _AbstractFile(

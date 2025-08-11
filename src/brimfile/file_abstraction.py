@@ -332,7 +332,9 @@ else:
 
                 Args:
                     filename (str): Path to the Zarr file.
-                    mode: the mode for opening the file (default is 'r' for read-only).
+                    mode: {'r', 'r+', 'a', 'w', 'w-'} the mode for opening the file (default is 'r' for read-only).
+                            'r' means read only (must exist); 'r+' means read/write (must exist);
+                            'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
                     store_type (str): Type of the store to use. Default is 'AUTO'.
                 """
                 st = StoreType
@@ -354,11 +356,17 @@ else:
                         raise ValueError(
                             "When using 'auto' store_type, the filename must end with '.zip' or '.zarr' or start with 'http' or 's3'.")
 
+                if mode not in ['r', 'r+', 'a', 'w', 'w-']:
+                    raise ValueError(
+                        f"Invalid mode '{mode}'. Supported modes are 'r', 'r+', 'a', 'w', and 'w-'.")
+
                 match store_type:
                     case st.ZIP:
                         mode_zip = mode
-                        if mode_zip == 'w-':
+                        if mode == 'w-':
                             mode_zip = 'x'
+                        elif mode == 'r+':
+                            mode_zip = 'a'
                         store = zarr.storage.ZipStore(filename, mode=mode_zip)
                     case st.ZARR:
                         store = zarr.storage.LocalStore(filename)
