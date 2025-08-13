@@ -1,4 +1,5 @@
 import re
+import numpy as np
 
 from .file_abstraction import FileAbstraction
 
@@ -83,3 +84,48 @@ def var_to_singleton(var):
     if (not isinstance(var, list)) and (not isinstance(var, tuple)):
         var = [var,]
     return var
+
+def np_array_to_smallest_int_type(arr):
+    """
+    Convert a numpy array containing integers to the smallest integer type that can hold its values.
+
+    Args:
+        arr (numpy.ndarray): The input numpy array.
+
+    Returns:
+        numpy.ndarray: The converted array with the smallest integer type.
+    """
+    def type_bug_fix (dt):
+        # explicitely pass an object of type np.dtype
+        # as what is returned by `min_scalar_type seems``
+        # to break type matching in the zarr library
+        match dt:
+            case np.int8:
+                return np.int8
+            case np.uint8:
+                return np.uint8
+            case np.int16:
+                return np.int16
+            case np.uint16:
+                return np.uint16
+            case np.int32:
+                return np.int32
+            case np.uint32:
+                return np.uint32
+            case np.int64:
+                return np.int64
+            case np.uint64:
+                return np.uint64
+            case _:
+                return dt
+    if not isinstance(arr, np.ndarray):
+        raise TypeError("Input must be a numpy array.")
+    if not np.issubdtype(arr.dtype, np.integer):
+        raise TypeError("Input array must contain integer values.")
+    if np.any(arr < 0):
+        # set mx to a negative number so that the smallest integer type is signed
+        mx = -np.max(np.abs(arr)).astype(np.int64)
+    else:
+        mx = arr.max().astype(np.uint64)    
+    # convert arr to the smallest integer type that can hold the values
+    return arr.astype(type_bug_fix(np.min_scalar_type(mx)))

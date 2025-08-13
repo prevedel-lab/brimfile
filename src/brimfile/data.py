@@ -4,7 +4,7 @@ import warnings
 from enum import Enum
 
 from .file_abstraction import FileAbstraction
-from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name, var_to_singleton
+from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name, var_to_singleton, np_array_to_smallest_int_type
 
 from .metadata import Metadata
 
@@ -89,13 +89,7 @@ class Data:
 
             if load_in_memory:
                 cv = np.array(cv)
-                #find the largest integer type that can hold the values in cv
-                mx = cv.max().astype(np.int64)
-                # if cv contains -1 we have to use a signed integer type
-                if np.any(cv < 0):
-                    mx = -mx
-                # convert cv to the smallest integer type that can hold the values
-                cv = cv.astype(np.min_scalar_type(mx))
+                cv = np_array_to_smallest_int_type(cv)
 
         elif self._file.object_exists(sm_path):
             def load_spatial_map_from_file(self):
@@ -147,7 +141,7 @@ class Data:
             nY, dY = calculate_step(y)
             nZ, dZ = calculate_step(z)
 
-            indices = np.lexsort((x, y, z))
+            indices = np_array_to_smallest_int_type(np.lexsort((x, y, z)))
             cv = np.reshape(indices, (nZ, nY, nX))
 
             px_size_units = units.of_object(self._file, sm_path)
@@ -857,8 +851,10 @@ class Data:
             add_sm_dataset('y')
             add_sm_dataset('z')
         if 'Cartesian_visualisation' in scanning:
+            # convert the Cartesian_visualisation to the smallest integer type
+            cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
             cv = self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
-                                           data=scanning['Cartesian_visualisation'], compression=compression)
+                                           data=cv_arr, compression=compression)
             if 'Cartesian_visualisation_pixel' in scanning:
                 self._file.create_attr(
                     cv, 'element_size', scanning['Cartesian_visualisation_pixel'])
