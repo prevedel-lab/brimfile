@@ -48,6 +48,11 @@ const DATA_SIZE = 1;
 //    N   float64: the array containing the actual data; IMPORTANT: the offset is ceiled to a multiple of 8
 function write_array_to_sab(arr, shape) {
   if (!(ArrayBuffer.isView(arr))) {throw new Error("Only arrays can be transferred with this function!")}
+  if (arr instanceof BigInt64Array || arr instanceof BigUint64Array) {
+    console.log('Converting BigInt array to Float64')
+    if (!canConvertBigInt64Array2Number(arr)) {throw new RangeError("BigInt Array contains values outside safe integer range");}
+    arr = Float64Array.from(arr, Number);
+  }
   if (!(arr instanceof Float64Array)) {console.warn("The data will be converted to Float64")}
   //set the shape of the array
   const shape_sab = new Uint32Array(sab, sab_payload_offset, 1+shape.length);
@@ -71,6 +76,16 @@ function write_array_to_sab(arr, shape) {
   const array_payload = new Float64Array(sab, array_payload_offset, arr.length);
   array_payload.set(arr);
 }
+
+function canConvertBigInt64Array2Number(bigArr) {
+    const minSafe = BigInt(Number.MIN_SAFE_INTEGER);
+    const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+    let minVal = bigArr[0];
+    let maxVal = bigArr[0];
+    for (const val of bigArr) {
+      if (val < minVal) minVal = val;
+      if (val > maxVal) maxVal = val;  }
+    return minVal >= minSafe && maxVal <= maxSafe;}
 
 function write_json_to_sab(js_obj) {
   //encode the object into a unit8 array
