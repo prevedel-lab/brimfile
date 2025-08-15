@@ -179,6 +179,40 @@ class Data:
         frequency_units = units.of_object(self._file, frequency)
 
         return PSD, frequency, PSD_units, frequency_units
+    
+    def get_PSD_as_spatial_map(self) -> tuple:
+        """
+        Retrieve the Power Spectral Density (PSD) as a spatial map and the frequency from the current data group.
+        Returns:
+            tuple: (PSD, frequency, PSD_units, frequency_units)
+                - PSD: A 4D (or more) numpy array containing all the spectra. Dimensions are z, y, x, [parameters], spectrum.
+                - frequency: A numpy array representing the frequency data, which can be broadcastable to PSD.
+                - PSD_units: The units of the PSD.
+                - frequency_units: The units of the frequency.
+        """
+        PSD = self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.PSD))
+        PSD = np.array(PSD)  # ensure it's a numpy array
+        frequency = self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.frequency))
+        frequency = np.array(frequency)  # ensure it's a numpy array
+        
+        #if the frequency is not the same for all spectra, broadcast it to match the shape of PSD
+        if frequency.ndim > 1:
+            frequency = np.broadcast_to(frequency, PSD.shape)
+        
+        sm = np.array(self._spatial_map)
+        # reshape the PSD to have the spatial dimensions first      
+        PSD = PSD[sm, ...]
+        # reshape the frequency pnly if it is not the same for all spectra
+        if frequency.ndim > 1:
+            frequency = frequency[sm, ...]
+
+        # retrieve the units of the PSD and frequency
+        PSD_units = units.of_object(self._file, PSD)
+        frequency_units = units.of_object(self._file, frequency)
+
+        return PSD, frequency, PSD_units, frequency_units
 
     def get_spectrum(self, index: int) -> tuple:
         """
