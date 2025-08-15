@@ -133,6 +133,7 @@ def np_array_to_smallest_int_type(arr):
 def _guess_chunks(
     shape: tuple,
     typesize: int,
+    dset_size: int = None,
     *,
     increment_bytes: int = 256 * 1024,
     min_bytes: int = 128 * 1024,
@@ -149,6 +150,8 @@ def _guess_chunks(
         The chunk shape.
     typesize : int
         The size, in bytes, of each element of the chunk.
+    dset_size : int
+        The size, in bytes, of the whole dataset. If None, it is calculated as the product of the shape and typesize.
     increment_bytes : int = 256 * 1024
         The number of bytes used to increment or decrement the target chunk size in bytes.
     min_bytes : int = 128 * 1024
@@ -173,7 +176,8 @@ def _guess_chunks(
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
-    dset_size = np.prod(chunks) * typesize
+    if dset_size is None:
+        dset_size = np.prod(chunks) * typesize
     target_size = increment_bytes * (2 ** np.log10(dset_size / (1024.0 * 1024)))
 
     if target_size > max_bytes:

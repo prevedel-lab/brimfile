@@ -878,7 +878,7 @@ class Data:
             # divide the target size by the last dimension size to get the chunk size for the other dimensions
             target_sizes = {k: target_sizes[k] // shape[-1] 
                             for k in target_sizes.keys()}
-            chunks = _guess_chunks(shape[0:-1], typesize, **target_sizes)
+            chunks = _guess_chunks(shape[0:-1], typesize, arr.nbytes, **target_sizes)
             return chunks + (shape[-1],)  # keep the last dimension size unchanged
         self._file.create_dataset(
             self._group, brim_obj_names.data.PSD, data=PSD,
