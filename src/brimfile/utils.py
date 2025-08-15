@@ -129,3 +129,76 @@ def np_array_to_smallest_int_type(arr):
         mx = arr.max().astype(np.uint64)    
     # convert arr to the smallest integer type that can hold the values
     return arr.astype(type_bug_fix(np.min_scalar_type(mx)))
+
+def _guess_chunks(
+    shape: tuple,
+    typesize: int,
+    *,
+    increment_bytes: int = 256 * 1024,
+    min_bytes: int = 128 * 1024,
+    max_bytes: int = 64 * 1024 * 1024,
+) -> tuple:
+    """
+    Iteratively guess an appropriate chunk layout for an array, given its shape and
+    the size of each element in bytes, and size constraints expressed in bytes. 
+    This function is based on https://github.com/zarr-developers/zarr-python/blob/71cc0c2e38ccd4ea1cfc2bd5f49dd66d4557484e/src/zarr/core/chunk_grids.py#L34
+
+    Parameters
+    ----------
+    shape : tuple
+        The chunk shape.
+    typesize : int
+        The size, in bytes, of each element of the chunk.
+    increment_bytes : int = 256 * 1024
+        The number of bytes used to increment or decrement the target chunk size in bytes.
+    min_bytes : int = 128 * 1024
+        The soft lower bound on the final chunk size in bytes.
+    max_bytes : int = 64 * 1024 * 1024
+        The hard upper bound on the final chunk size in bytes.
+
+    Returns
+    -------
+    tuple
+
+    """
+    if isinstance(shape, int):
+        shape = (shape,)
+
+    if typesize == 0:
+        return shape
+
+    ndims = len(shape)
+    # require chunks to have non-zero length for all dimensions
+    chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
+
+    # Determine the optimal chunk size in bytes using a PyTables expression.
+    # This is kept as a float.
+    dset_size = np.prod(chunks) * typesize
+    target_size = increment_bytes * (2 ** np.log10(dset_size / (1024.0 * 1024)))
+
+    if target_size > max_bytes:
+        target_size = max_bytes
+    elif target_size < min_bytes:
+        target_size = min_bytes
+
+    idx = 0
+    while True:
+        # Repeatedly loop over the axes, dividing them by 2.  Stop when:
+        # 1a. We're smaller than the target chunk size, OR
+        # 1b. We're within 50% of the target chunk size, AND
+        # 2. The chunk is smaller than the maximum chunk size
+
+        chunk_bytes = np.prod(chunks) * typesize
+
+        if (
+            chunk_bytes < target_size or abs(chunk_bytes - target_size) / target_size < 0.5
+        ) and chunk_bytes < max_bytes:
+            break
+
+        if np.prod(chunks) == 1:
+            break  # Element size larger than max_bytes
+
+        chunks[idx % ndims] = np.ceil(chunks[idx % ndims] / 2.0)
+        idx += 1
+
+    return tuple(int(x) for x in chunks)

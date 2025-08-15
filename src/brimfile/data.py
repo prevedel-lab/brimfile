@@ -4,7 +4,8 @@ import warnings
 from enum import Enum
 
 from .file_abstraction import FileAbstraction
-from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name, var_to_singleton, np_array_to_smallest_int_type
+from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name
+from .utils import var_to_singleton, np_array_to_smallest_int_type, _guess_chunks
 
 from .metadata import Metadata
 
@@ -812,9 +813,9 @@ class Data:
 
         # Check if frequency is broadcastable to PSD
         try:
-            np.broadcast(PSD, frequency)
+            np.broadcast_shapes(tuple(frequency.shape), tuple(PSD.shape))
         except ValueError as e:
-            raise ValueError(f"frequency is not broadcastable to PSD: {e}")
+            raise ValueError(f"frequency (shape: {frequency.shape}) is not broadcastable to PSD (shape: {PSD.shape}): {e}")
 
         # define the scanning_is_valid variable to check if at least one of 'Spatial_map' or 'Cartesian_visualisation'
         # is present in the scanning dictionary
@@ -864,11 +865,29 @@ class Data:
         # TODO: add and validate additional datasets (i.e. 'Parameters', 'Calibration_index', etc.)
 
         # Add datasets to the group
+        def determine_chunk_size(arr: np.array) -> tuple:
+            """"
+            Use the same heuristic as the zarr library to determine the chunk size, but without splitting the last dimension
+            """
+            shape = arr.shape
+            typesize = arr.itemsize
+            #if the array is 1D, do not chunk it
+            if len(shape) <= 1:
+                return (shape[0],)
+            target_sizes = _guess_chunks.__kwdefaults__
+            # divide the target size by the last dimension size to get the chunk size for the other dimensions
+            target_sizes = {k: target_sizes[k] // shape[-1] 
+                            for k in target_sizes.keys()}
+            chunks = _guess_chunks(shape[0:-1], typesize, **target_sizes)
+            return chunks + (shape[-1],)  # keep the last dimension size unchanged
         self._file.create_dataset(
-            self._group, brim_obj_names.data.PSD, data=PSD, compression=compression)
+            self._group, brim_obj_names.data.PSD, data=PSD,
+            chunk_size=determine_chunk_size(PSD), compression=compression)
         freq_ds = self._file.create_dataset(
-            self._group,  brim_obj_names.data.frequency, data=frequency, compression=compression)
+            self._group,  brim_obj_names.data.frequency, data=frequency,
+            chunk_size=determine_chunk_size(frequency), compression=compression)
         units.add_to_object(self._file, freq_ds, freq_units)
+
         if 'Spatial_map' in scanning:
             sm = scanning['Spatial_map']
             sm_group = self._file.create_group(concatenate_paths(
