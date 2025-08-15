@@ -36,7 +36,7 @@ class File:
                             See the definition of `mode` in `brimfile.file_abstraction._zarrFile.__init__()` for more details.
                             'r' means read only (must exist); 'r+' means read/write (must exist);
                             'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
-                store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'auto'.
+                store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
             """
             self._file = _AbstractFile(
                 filename, mode=mode, store_type=store_type)
@@ -67,7 +67,7 @@ class File:
         return True
 
     @classmethod
-    def create(cls, filename: str, store_type: str = 'zip'):
+    def create(cls, filename: str, store_type: StoreType = StoreType.AUTO):
         """
         Create a new brim file with the specified filename. If the file exists already it will generate an error.
 
@@ -76,7 +76,7 @@ class File:
 
         Returns:
             File: An instance of the File class representing the newly created brim file.
-            store_type (str): Type of the store to use ('zip', 'zarr', 'remote'). Default is 'zip'.
+            store_type (str): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
         """
         f = cls(filename, mode='w-', store_type=store_type)
 
