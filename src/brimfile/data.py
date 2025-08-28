@@ -3,7 +3,7 @@ import numpy as np
 import warnings
 from enum import Enum
 
-from .file_abstraction import FileAbstraction
+from .file_abstraction import FileAbstraction, sync
 from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name
 from .utils import var_to_singleton, np_array_to_smallest_int_type, _guess_chunks
 
@@ -32,7 +32,7 @@ class Data:
         """
         self._file = file
         self._path = path
-        self._group = file.open_group(path)
+        self._group = sync(file.open_group(path))
 
         self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
 
@@ -66,14 +66,14 @@ class Data:
         sm_path = concatenate_paths(
             self._path, brim_obj_names.data.spatial_map)
         
-        if self._file.object_exists(cv_path):
-            cv = self._file.open_dataset(cv_path)
+        if sync(self._file.object_exists(cv_path)):
+            cv = sync(self._file.open_dataset(cv_path))
 
             #read the pixel size from the 'Cartesian visualisation' dataset
             px_size_val = 3*(1,)
             px_size_units = None
             try:
-                px_size_val = self._file.get_attr(cv, 'element_size')
+                px_size_val = sync(self._file.get_attr(cv, 'element_size'))
             except Exception:
                 warnings.warn(
                     "No pixel size defined for Cartesian visualisation")            
@@ -92,13 +92,13 @@ class Data:
                 cv = np.array(cv)
                 cv = np_array_to_smallest_int_type(cv)
 
-        elif self._file.object_exists(sm_path):
+        elif sync(self._file.object_exists(sm_path)):
             def load_spatial_map_from_file(self):
                 def load_coordinate_from_sm(coord: str):
                     res = np.empty(0)  # empty array
                     try:
-                        res = np.array(self._file.open_dataset(
-                            concatenate_paths(sm_path, coord)))
+                        res = np.array(sync(self._file.open_dataset(
+                            concatenate_paths(sm_path, coord))))
                         res = np.squeeze(res)  # remove single-dimensional entries
                     except Exception:
                         pass
@@ -171,10 +171,10 @@ class Data:
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
-        PSD = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD))
-        frequency = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency))
+        PSD = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.PSD)))
+        frequency = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.frequency)))
         # retrieve the units of the PSD and frequency
         PSD_units = units.of_object(self._file, PSD)
         frequency_units = units.of_object(self._file, frequency)
@@ -191,11 +191,11 @@ class Data:
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
-        PSD = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD))
+        PSD = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.PSD)))
         PSD = np.array(PSD)  # ensure it's a numpy array
-        frequency = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency))
+        frequency = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.frequency)))
         frequency = np.array(frequency)  # ensure it's a numpy array
         
         #if the frequency is not the same for all spectra, broadcast it to match the shape of PSD
@@ -232,13 +232,13 @@ class Data:
         # index = -1 corresponds to no spectrum
         if index < 0:
             return None, None, None, None
-        PSD = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD))
+        PSD = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.PSD)))
         if index >= PSD.shape[0]:
             raise IndexError(
                 f"index {index} out of range for PSD with shape {PSD.shape}")        
-        frequency = self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency))
+        frequency = sync(self._file.open_dataset(concatenate_paths(
+            self._path, brim_obj_names.data.frequency)))
         # retrieve the units of the PSD and frequency
         PSD_units = units.of_object(self._file, PSD)
         frequency_units = units.of_object(self._file, frequency)
@@ -319,7 +319,7 @@ class Data:
             """
             group_name = f"{brim_obj_names.data.analysis_results}_{index}"
             ar_full_path = concatenate_paths(data._path, group_name)
-            group = data._file.create_group(ar_full_path)
+            group = sync(data._file.create_group(ar_full_path))
             return cls(data._file, ar_full_path, data._spatial_map, data._spatial_map_px_size)
 
         def add_data(self, data_AntiStokes=None, data_Stokes=None):
@@ -344,12 +344,12 @@ class Data:
             """
 
             ar_cls = Data.AnalysisResults
-            ar_group = self._file.open_group(self._path)
+            ar_group = sync(self._file.open_group(self._path))
 
             def add_quantity(qt: Data.AnalysisResults.Quantity, pt: Data.AnalysisResults.PeakType, data, index: int = 0):
                 # TODO: check if the data is valid
-                self._file.create_dataset(
-                    ar_group, ar_cls._get_quantity_name(qt, pt, index), data)
+                sync(self._file.create_dataset(
+                    ar_group, ar_cls._get_quantity_name(qt, pt, index), data))
 
             def add_data_pt(pt: Data.AnalysisResults.PeakType, data, index: int = 0):
                 if 'shift' in data:
@@ -593,7 +593,7 @@ class Data:
 
             dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
             full_path = concatenate_paths(self._path, dt_name)
-            return self._file.open_dataset(full_path)
+            return sync(self._file.open_dataset(full_path))
 
         def list_existing_peak_types(self, index: int = 0) -> tuple:
             """
@@ -610,9 +610,9 @@ class Data:
             shift_as_name = as_cls._get_quantity_name(
                 as_cls.Quantity.Shift, as_cls.PeakType.AntiStokes, index)
             ls = ()
-            if self._file.object_exists(concatenate_paths(self._path, shift_as_name)):
+            if sync(self._file.object_exists(concatenate_paths(self._path, shift_as_name))):
                 ls += (as_cls.PeakType.AntiStokes,)
-            if self._file.object_exists(concatenate_paths(self._path, shift_s_name)):
+            if sync(self._file.object_exists(concatenate_paths(self._path, shift_s_name))):
                 ls += (as_cls.PeakType.Stokes,)
             return ls
 
@@ -627,7 +627,7 @@ class Data:
             as_cls = Data.AnalysisResults
             ls = ()
             for qt in as_cls.Quantity:
-                if self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index))):
+                if sync(self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index)))):
                     ls += (qt,)
             return ls
 
@@ -660,9 +660,9 @@ class Data:
         """
         pars_full_path = concatenate_paths(
             self._path, brim_obj_names.data.parameters)
-        if self._file.object_exists(pars_full_path):
-            pars = self._file.open_dataset(pars_full_path)
-            pars_names = self._file.get_attr(pars, 'Name')
+        if sync(self._file.object_exists(pars_full_path)):
+            pars = sync(self._file.open_dataset(pars_full_path))
+            pars_names = sync(self._file.get_attr(pars, 'Name'))
             return (pars, pars_names)
         return (None, None)
 
@@ -880,25 +880,25 @@ class Data:
                             for k in target_sizes.keys()}
             chunks = _guess_chunks(shape[0:-1], typesize, arr.nbytes, **target_sizes)
             return chunks + (shape[-1],)  # keep the last dimension size unchanged
-        self._file.create_dataset(
+        sync(self._file.create_dataset(
             self._group, brim_obj_names.data.PSD, data=PSD,
-            chunk_size=determine_chunk_size(PSD), compression=compression)
-        freq_ds = self._file.create_dataset(
+            chunk_size=determine_chunk_size(PSD), compression=compression))
+        freq_ds = sync(self._file.create_dataset(
             self._group,  brim_obj_names.data.frequency, data=frequency,
-            chunk_size=determine_chunk_size(frequency), compression=compression)
+            chunk_size=determine_chunk_size(frequency), compression=compression))
         units.add_to_object(self._file, freq_ds, freq_units)
 
         if 'Spatial_map' in scanning:
             sm = scanning['Spatial_map']
-            sm_group = self._file.create_group(concatenate_paths(
-                self._path, brim_obj_names.data.spatial_map))
+            sm_group = sync(self._file.create_group(concatenate_paths(
+                self._path, brim_obj_names.data.spatial_map)))
             if 'units' in sm:
                 units.add_to_object(self._file, sm_group, sm['units'])
 
             def add_sm_dataset(coord: str):
                 if coord in sm:
-                    coord_dts = self._file.create_dataset(
-                        sm_group, coord, data=sm[coord], compression=compression)
+                    coord_dts = sync(self._file.create_dataset(
+                        sm_group, coord, data=sm[coord], compression=compression))
 
             add_sm_dataset('x')
             add_sm_dataset('y')
@@ -906,11 +906,11 @@ class Data:
         if 'Cartesian_visualisation' in scanning:
             # convert the Cartesian_visualisation to the smallest integer type
             cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
-            cv = self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
-                                           data=cv_arr, compression=compression)
+            cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
+                                           data=cv_arr, compression=compression))
             if 'Cartesian_visualisation_pixel' in scanning:
-                self._file.create_attr(
-                    cv, 'element_size', scanning['Cartesian_visualisation_pixel'])
+                sync(self._file.create_attr(
+                    cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
                 if 'Cartesian_visualisation_pixel_unit' in scanning:
                     px_unit = scanning['Cartesian_visualisation_pixel_unit']
                 else:
@@ -922,8 +922,8 @@ class Data:
         self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
 
         if timestamp is not None:
-            self._file.create_dataset(
-                self._group, 'Timestamp', data=timestamp, compression=compression)
+            sync(self._file.create_dataset(
+                self._group, 'Timestamp', data=timestamp, compression=compression))
 
     @staticmethod
     def list_data_groups(file: FileAbstraction, retrieve_custom_name=False) -> list:
@@ -991,8 +991,8 @@ class Data:
             Data: The newly created Data object.
         """
         group_name = Data._generate_group_name(index)
-        group = file.create_group(concatenate_paths(
-            brim_obj_names.Brillouin_base_path, group_name))
+        group = sync(file.create_group(concatenate_paths(
+            brim_obj_names.Brillouin_base_path, group_name)))
         if name is not None:
             set_object_name(file, group, name)
         return cls(file, concatenate_paths(brim_obj_names.Brillouin_base_path, group_name))
