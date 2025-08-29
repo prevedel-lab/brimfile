@@ -181,8 +181,137 @@ class StoreType(Enum):
 
 import sys
 if "pyodide" in sys.modules:  # using javascript based zarr library
-    from __main__ import _zarrFile
+    import js
+    import numpy as np    
+    import asyncio
+    
+    async def _awaitable_wrapper(coro):
+        return await coro
+    def sync(coro):
+        """"
+        Synchronously run an asynchronous coroutine.
+        """
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(_awaitable_wrapper(coro))
+        # In Pyodide, we can't block the event loop, so instead we yield back
+        # control until the task is done.
+        while not task.done():
+            loop.run_until_complete(asyncio.sleep(0))
+        return task.result()
 
+    class _zarrFile:
+        class ZarrArray:
+            def __init__(self, zarr_js, dts):
+                self._zarr_js = zarr_js
+                self.dts = dts            
+            def __str__(self):
+                return str(self.dts)
+            def __array__(self, dtype=None, copy=None):
+                #TODO: implement dtype and copy
+                # see https://numpy.org/doc/stable/user/basics.interoperability.html#dunder-array-interface
+                return self[...]
+            
+            def __getitem__(self, index):
+                def index_to_js_slice(i):
+                    if isinstance(i, slice):
+                        return [i.start, i.stop]
+                    elif isinstance(i, type(Ellipsis)):
+                        raise ValueEror("INTERNAL: Ellipsis should have been already substituted")
+                    else:
+                        return [i, i+1]
+                if type(index) is not tuple:
+                    index = (index,)
+                # check that only one Ellipsis is present
+                num_ellipsis = sum(isinstance(i, type(Ellipsis)) for i in index)
+                if num_ellipsis>1:
+                    raise ValueError("Only one Ellipsis is allowed!")
+                if num_ellipsis == 1:
+                    n_dim = len(self.shape)
+                    if len(index)-1>n_dim:
+                        raise ValueError(f"Expected at most {n_dim} indices and got {len(index)} instead!")
+                    n_null_indices = 1 + n_dim-len(index)
+                    new_index = ()
+                    for i in index:
+                        if isinstance(i, type(Ellipsis)):
+                            new_index += (slice(None),)*n_null_indices
+                        else:
+                            new_index += (i,)
+                    index = new_index     
+                js_indices = [];
+                for i in index:
+                    js_indices.append(index_to_js_slice(i))
+                
+                res = sync(self._zarr_js.get_array_slice(str(self.dts), js_indices))
+                data = _zarrFile.JsProxy_to_py(res.data)
+                shape = _zarrFile.JsProxy_to_py(res.shape)
+                data = np.array(data)
+                data = np.reshape(data, shape)
+                
+                # remove singleton dimensions
+                singleton_dims = ();
+                for i, ind in enumerate(index):
+                    if isinstance(ind, int):
+                        singleton_dims += (i,)
+                if len(singleton_dims)>0:
+                    data = np.squeeze(data, axis=singleton_dims)
+                return data
+            @property
+            def shape(self):
+                if hasattr(self, '_shape'):
+                    return self._shape
+                else:
+                    res = sync(self._zarr_js.get_array_shape(str(self.dts)))
+                    self._shape = _zarrFile.JsProxy_to_py(res)
+                    return self._shape
+            @property
+            def size(self):
+                return np.prod(self.shape)
+
+            @property
+            def ndim(self):
+                return len(self.shape)
+            
+
+        def __init__(self, zarr_js, filename:str):
+            self._zarr_js = zarr_js
+            self.filename = filename
+
+        @staticmethod
+        def JsProxy_to_py(jsproxy):
+            #alternatively one can use isinstance(jsproxy, pyodide.ffi.JsProxy)
+            if hasattr(jsproxy, "to_py"):
+                return jsproxy.to_py()
+            return jsproxy
+        
+        # -------------------- Attribute Management --------------------
+        async def get_attr(self, full_path, attr_name):  
+            res = await self._zarr_js.get_attribute(str(full_path), str(attr_name))
+            return _zarrFile.JsProxy_to_py(res)
+        
+        # -------------------- Group Management --------------------
+        async def open_group(self, full_path: str):
+            res = await self._zarr_js.open_group(str(full_path))
+            return res
+        
+        # -------------------- Dataset Management --------------------
+        async def open_dataset(self, full_path: str):
+            dts = await self._zarr_js.open_dataset(str(full_path))
+            return _zarrFile.ZarrArray(self._zarr_js, dts)
+        
+        # -------------------- Listing --------------------
+        async def list_objects(self, full_path) -> list:
+            res = await self._zarr_js.list_objects(str(full_path))
+            return _zarrFile.JsProxy_to_py(res)
+        async def object_exists(self, full_path) -> bool:
+            res = await self._zarr_js.object_exists(str(full_path))
+            return _zarrFile.JsProxy_to_py(res)
+        async def list_attributes(self, full_path) -> list:
+            res = await self._zarr_js.list_attributes(str(full_path))
+            return _zarrFile.JsProxy_to_py(res)
+        
+        # -------------------- Properties --------------------
+        async def is_read_only(self) -> bool:
+            return True
 else:
     import zarr
     import numcodecs
@@ -191,6 +320,9 @@ else:
 
     import zarr.api.asynchronous as zarr_async
     def sync(coro):
+        """"
+        Synchronously run an asynchronous coroutine.
+        """
         res =  zarr.core.sync.sync(coro)
         return res
     

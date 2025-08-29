@@ -97,10 +97,12 @@ class Data:
                 def load_coordinate_from_sm(coord: str):
                     res = np.empty(0)  # empty array
                     try:
-                        res = np.array(sync(self._file.open_dataset(
-                            concatenate_paths(sm_path, coord))))
+                        res = sync(self._file.open_dataset(
+                            concatenate_paths(sm_path, coord)))
+                        res = np.array(res)
                         res = np.squeeze(res)  # remove single-dimensional entries
-                    except Exception:
+                    except Exception as e:
+                        # if the coordinate does not exist, return an empty array
                         pass
                     if len(res.shape) > 1:
                         raise ValueError(
