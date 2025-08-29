@@ -216,7 +216,7 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                     if isinstance(i, slice):
                         return [i.start, i.stop]
                     elif isinstance(i, type(Ellipsis)):
-                        raise ValueEror("INTERNAL: Ellipsis should have been already substituted")
+                        raise ValueError("INTERNAL: Ellipsis should have been already substituted")
                     else:
                         return [i, i+1]
                 if type(index) is not tuple:
@@ -237,7 +237,7 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                         else:
                             new_index += (i,)
                     index = new_index     
-                js_indices = [];
+                js_indices = []
                 for i in index:
                     js_indices.append(index_to_js_slice(i))
                 
@@ -248,7 +248,7 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                 data = np.reshape(data, shape)
                 
                 # remove singleton dimensions
-                singleton_dims = ();
+                singleton_dims = ()
                 for i, ind in enumerate(index):
                     if isinstance(ind, int):
                         singleton_dims += (i,)
