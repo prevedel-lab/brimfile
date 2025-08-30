@@ -1,6 +1,8 @@
 import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
+import numpy as np  
+import asyncio
 
 __docformat__ = "google"
 
@@ -179,11 +181,46 @@ class StoreType(Enum):
     S3 = 'S3'
     AUTO = 'auto' # automatically determine the store type based on the filename (i.e. extension or url schema)
 
+async def _async_getitem(obj, indices: tuple):
+        """
+        Asynchronously get a slice of an object that supports indexing and slicing.
+        
+        Args:
+            obj: Object that supports indexing and slicing (e.g., zarr.AsyncArray).
+            indices (tuple): Tuple of indices or slices to retrieve.
+        Returns:
+            The sliced data from the object.
+        
+        N.B. this function is a quick workaround to transition from the sync to async paradigm.
+             Consider rethinking the whole structure it in the future!
+        """
+        if isinstance(indices, list):
+            indices = tuple(indices)
+        elif not isinstance(indices, tuple):
+            indices = (indices,)
+
+        if isinstance(obj, _ZarrAsyncArray):
+            #N.B. it is important to check first if obj is a _ZarrAsyncArray,
+            # since in pyodide there might be no distinction between zarr.Array and zarr.AsyncArray
+            # and the async call should have priority
+            return await obj.getitem(indices)
+        elif isinstance(obj, np.ndarray) or isinstance(obj,  _ZarrArray):
+            return obj[indices]        
+        else:
+            raise ValueError(f"Object of type '{type(obj)}' does not support indexing and slicing.")
+
+def _gather_sync(*aws, return_exceptions: bool = False):
+    """
+    Sync version of asyncio.gather.
+    Args: same as asyncio.gather
+    """
+    async def _f():
+        return await asyncio.gather(*aws, return_exceptions=return_exceptions)
+    return sync(_f())
+
 import sys
 if "pyodide" in sys.modules:  # using javascript based zarr library
     import js
-    import numpy as np    
-    import asyncio
     
     async def _awaitable_wrapper(coro):
         return await coro
@@ -211,7 +248,7 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                 # see https://numpy.org/doc/stable/user/basics.interoperability.html#dunder-array-interface
                 return self[...]
             
-            def __getitem__(self, index):
+            async def getitem(self, index):
                 def index_to_js_slice(i):
                     if isinstance(i, slice):
                         return [i.start, i.stop]
@@ -241,7 +278,7 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                 for i in index:
                     js_indices.append(index_to_js_slice(i))
                 
-                res = sync(self._zarr_js.get_array_slice(str(self.dts), js_indices))
+                res = await self._zarr_js.get_array_slice(str(self.dts), js_indices)
                 data = _zarrFile.JsProxy_to_py(res.data)
                 shape = _zarrFile.JsProxy_to_py(res.shape)
                 data = np.array(data)
@@ -254,7 +291,10 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                         singleton_dims += (i,)
                 if len(singleton_dims)>0:
                     data = np.squeeze(data, axis=singleton_dims)
-                return data
+                return data            
+            def __getitem__(self, index):
+                return sync(self.getitem(index))
+            
             @property
             def shape(self):
                 if hasattr(self, '_shape'):
@@ -312,6 +352,10 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
         # -------------------- Properties --------------------
         async def is_read_only(self) -> bool:
             return True
+    
+    # used by _async_getitem
+    _ZarrAsyncArray = _zarrFile.ZarrArray
+    _ZarrArray = _zarrFile.ZarrArray
 else:
     import zarr
     import numcodecs
@@ -325,6 +369,10 @@ else:
         """
         res =  zarr.core.sync.sync(coro)
         return res
+    
+    # used by _async_getitem
+    _ZarrAsyncArray = zarr.AsyncArray
+    _ZarrArray = zarr.Array
     
     def _parse_storage_url(url):
         from urllib.parse import urlparse
@@ -479,6 +527,9 @@ else:
         def _to_ZarrArray(obj: zarr.AsyncArray):
             """"
             Add attributes to Zarr.AsyncArray object to support numpy indexing and slicing.
+            
+            N.B. this is a temporary fix to make existing code compatible with zarr.AsyncArray
+                 Don't add any new functionality here and consider changing it in the future!
             """ 
             class _ZarrArray(zarr.AsyncArray):
                 def __array__(self, dtype=None, copy=None):

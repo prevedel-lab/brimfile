@@ -1,9 +1,10 @@
 import numpy as np
+import asyncio
 
 import warnings
 from enum import Enum
 
-from .file_abstraction import FileAbstraction, sync
+from .file_abstraction import FileAbstraction, sync, _async_getitem, _gather_sync
 from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name
 from .utils import var_to_singleton, np_array_to_smallest_int_type, _guess_chunks
 
@@ -94,11 +95,11 @@ class Data:
 
         elif sync(self._file.object_exists(sm_path)):
             def load_spatial_map_from_file(self):
-                def load_coordinate_from_sm(coord: str):
+                async def load_coordinate_from_sm(coord: str):
                     res = np.empty(0)  # empty array
                     try:
-                        res = sync(self._file.open_dataset(
-                            concatenate_paths(sm_path, coord)))
+                        res = await self._file.open_dataset(
+                            concatenate_paths(sm_path, coord))
                         res = np.array(res)
                         res = np.squeeze(res)  # remove single-dimensional entries
                     except Exception as e:
@@ -117,9 +118,11 @@ class Data:
                             "The 'Spatial_map' dataset is invalid")
                     return arr
 
-                x = load_coordinate_from_sm('x')
-                y = load_coordinate_from_sm('y')
-                z = load_coordinate_from_sm('z')
+                x, y, z = _gather_sync(
+                    load_coordinate_from_sm('x'),
+                    load_coordinate_from_sm('y'),
+                    load_coordinate_from_sm('z')
+                    )
                 size = max([x.size, y.size, z.size])
                 if size == 0:
                     raise ValueError("The 'Spatial_map' dataset is empty")
@@ -147,7 +150,7 @@ class Data:
             indices = np_array_to_smallest_int_type(np.lexsort((x, y, z)))
             cv = np.reshape(indices, (nZ, nY, nX))
 
-            px_size_units = units.of_object(self._file, sm_path)
+            px_size_units = sync(units.of_object(self._file, sm_path))
             px_size = ()
             for i in range(3):
                 px_sz = (dZ, dY, dX)[i]
@@ -173,13 +176,17 @@ class Data:
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
-        PSD = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD)))
-        frequency = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency)))
+        PSD, frequency = _gather_sync(
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.PSD)),
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.frequency))
+        )
         # retrieve the units of the PSD and frequency
-        PSD_units = units.of_object(self._file, PSD)
-        frequency_units = units.of_object(self._file, frequency)
+        PSD_units, frequency_units = _gather_sync(
+            units.of_object(self._file, PSD),
+            units.of_object(self._file, frequency)
+        )
 
         return PSD, frequency, PSD_units, frequency_units
     
@@ -193,11 +200,20 @@ class Data:
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
-        PSD = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD)))
-        PSD = np.array(PSD)  # ensure it's a numpy array
-        frequency = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency)))
+        PSD, frequency = _gather_sync(
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.PSD)),        
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.frequency))
+            )        
+        # retrieve the units of the PSD and frequency
+        PSD_units, frequency_units = _gather_sync(
+            units.of_object(self._file, PSD),
+            units.of_object(self._file, frequency)
+        )
+
+        # ensure PSD and frequency are numpy arrays
+        PSD = np.array(PSD)  
         frequency = np.array(frequency)  # ensure it's a numpy array
         
         #if the frequency is not the same for all spectra, broadcast it to match the shape of PSD
@@ -211,13 +227,14 @@ class Data:
         if frequency.ndim > 1:
             frequency = frequency[sm, ...]
 
-        # retrieve the units of the PSD and frequency
-        PSD_units = units.of_object(self._file, PSD)
-        frequency_units = units.of_object(self._file, frequency)
-
         return PSD, frequency, PSD_units, frequency_units
 
     def get_spectrum(self, index: int) -> tuple:
+        """
+        Synchronous wrapper for `get_spectrum_async` (see doc for `brimfile.data.Data.get_spectrum_async`)
+        """
+        return sync(self.get_spectrum_async(index))
+    async def get_spectrum_async(self, index: int) -> tuple:
         """
         Retrieve a spectrum from the data group.
 
@@ -234,20 +251,36 @@ class Data:
         # index = -1 corresponds to no spectrum
         if index < 0:
             return None, None, None, None
-        PSD = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.PSD)))
+        PSD, frequency = await asyncio.gather(
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.PSD)),                       
+            self._file.open_dataset(concatenate_paths(
+                self._path, brim_obj_names.data.frequency))
+            )
         if index >= PSD.shape[0]:
             raise IndexError(
-                f"index {index} out of range for PSD with shape {PSD.shape}")        
-        frequency = sync(self._file.open_dataset(concatenate_paths(
-            self._path, brim_obj_names.data.frequency)))
+                f"index {index} out of range for PSD with shape {PSD.shape}") 
         # retrieve the units of the PSD and frequency
-        PSD_units = units.of_object(self._file, PSD)
-        frequency_units = units.of_object(self._file, frequency)
-        # broadcast frequency to match the shape of PSD
+        PSD_units, frequency_units = await asyncio.gather(
+            units.of_object(self._file, PSD),
+            units.of_object(self._file, frequency)
+        )
+        # map index to the frequency array, considering the broadcasting rules
+        index_frequency = (index, ...)
+        if frequency.ndim < PSD.ndim:
+            # given the definition of the brim file format,
+            # if the frequency has less dimensions that PSD,
+            # it can only be because it is the same for all the spatial position (first dimension)
+            index_frequency = (..., )
+        #get the spectrum and the corresponding frequency at the specified index
+        PSD, frequency = await asyncio.gather(
+            _async_getitem(PSD, (index,...)),
+            _async_getitem(frequency, index_frequency)
+        )
+        #broadcast the frequency to match the shape of PSD if needed
         if frequency.ndim < PSD.ndim:
             frequency = np.broadcast_to(frequency, PSD.shape)
-        return PSD[index, ...], frequency[index, ...], PSD_units, frequency_units
+        return PSD, frequency, PSD_units, frequency_units
 
     def get_spectrum_in_image(self, coor: tuple) -> tuple:
         """
@@ -418,7 +451,7 @@ class Data:
             """
             dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
             full_path = concatenate_paths(self._path, dt_name)
-            return units.of_object(self._file, full_path)
+            return sync(units.of_object(self._file, full_path))
 
         def _set_units(self, un: str, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str:
             """
@@ -450,13 +483,12 @@ class Data:
             Returns:
                 str: The path to the saved OMETiff file.
             """
-            # TODO: implement the possibility of saving the average between Stokes and AntiStokes
             try:
                 import tifffile
             except ImportError:
                 raise ModuleNotFoundError(
                     "The tifffile module is required for saving to OME-Tiff. Please install it using 'pip install tifffile'.")
-            img, px_size = self.get_image(qt, pt, index)
+            
             if filename is None:
                 filename = f"{qt.value}_{pt.value}_{index}.ome.tif"
             if not filename.endswith('.ome.tif'):
@@ -502,21 +534,25 @@ class Data:
                         raise ValueError(
                             "No peaks found for the specified index. Cannot compute average.")
                     case 1:
-                        data = np.array(self._get_quantity(qt, peaks[0], index))
+                        data = np.array(sync(self._get_quantity(qt, peaks[0], index)))
                     case 2:
-                        data = np.abs(
-                            np.array(self._get_quantity(qt, peaks[0], index)))
-                        data += np.abs(np.array(self._get_quantity(qt,
-                                    peaks[1], index)))
-                        data /= 2
+                        data1, data2 = _gather_sync(
+                            self._get_quantity(qt, peaks[0], index),
+                            self._get_quantity(qt, peaks[1], index)
+                            )
+                        data = (np.abs(data1) + np.abs(data2))/2
             else:
-                data = np.array(self._get_quantity(qt, pt, index))
+                data = np.array(sync(self._get_quantity(qt, pt, index)))
             sm = np.array(self._spatial_map)
             img = data[sm, ...]
             img[sm<0, ...] = np.nan  # set invalid pixels to NaN
             return img, self._spatial_map_px_size
-
         def get_quantity_at_pixel(self, coord: tuple, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
+            """
+            Synchronous wrapper for `get_quantity_at_pixel_async` (see doc for `brimfile.data.Data.AnalysisResults.get_quantity_at_pixel_async`)
+            """
+            return sync(self.get_quantity_at_pixel_async(coord, qt, pt, index))
+        async def get_quantity_at_pixel_async(self, coord: tuple, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
             """
             Retrieves the specified quantity in the image at coord, based on the peak type and index.
 
@@ -527,7 +563,7 @@ class Data:
                 index (int, optional): The index of the data to retrieve, if multiple are present (default is 0).
 
             Returns:
-                The requested quantity, which is a scalr or a multidimensional array (depending on whether there are additional parameters in the current Data group)
+                The requested quantity, which is a scalar or a multidimensional array (depending on whether there are additional parameters in the current Data group)
             """
             if len(coord) != 3:
                 raise ValueError(
@@ -542,23 +578,27 @@ class Data:
             value = None
             if pt == pt_type.average:
                 value = None
-                peaks = self.list_existing_peak_types(index)
+                peaks = await self.list_existing_peak_types_async(index)
                 match len(peaks):
                     case 0:
                         raise ValueError(
                             "No peaks found for the specified index. Cannot compute average.")
                     case 1:
-                        data = self._get_quantity(qt, peaks[0], index)
-                        value = data[i, ...]
+                        data = await self._get_quantity(qt, peaks[0], index)
+                        value = await _async_getitem(data, (i, ...))
                     case 2:
-                        data = self._get_quantity(qt, peaks[0], index)
-                        value = np.abs(data[i, ...])
-                        data = self._get_quantity(qt, peaks[1], index)
-                        value += np.abs(data[i, ...])
-                        value /= 2
+                        data_p0, data_p1 = await asyncio.gather(
+                            self._get_quantity(qt, peaks[0], index),
+                            self._get_quantity(qt, peaks[1], index)
+                        )
+                        value1, value2 = await asyncio.gather(
+                            _async_getitem(data_p0, (i, ...)),
+                            _async_getitem(data_p1, (i, ...))
+                        )
+                        value = (np.abs(value1) + np.abs(value2))/2
             else:
-                data = self._get_quantity(qt, pt, index)
-                value = data[i, ...]
+                data = await self._get_quantity(qt, pt, index)
+                value = await _async_getitem(data, (i, ...))
             return value
 
         @classmethod
@@ -579,7 +619,7 @@ class Data:
                 name = f"{str(qt.value)}_{str(pt.value)}_{index}"
             return name
 
-        def _get_quantity(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
+        async def _get_quantity(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
             """
             Retrieve a specific quantity dataset from the file.
 
@@ -595,9 +635,14 @@ class Data:
 
             dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
             full_path = concatenate_paths(self._path, dt_name)
-            return sync(self._file.open_dataset(full_path))
+            return await self._file.open_dataset(full_path)
 
         def list_existing_peak_types(self, index: int = 0) -> tuple:
+            """
+            Synchronous wrapper for `list_existing_peak_types_async` (see doc for `brimfile.data.Data.AnalysisResults.list_existing_peak_types_async`)
+            """
+            return sync(self.list_existing_peak_types_async(index)) 
+        async def list_existing_peak_types_async(self, index: int = 0) -> tuple:
             """
             Returns a tuple of existing peak types (Stokes and/or AntiStokes) for the specified index.
             Args:
@@ -612,9 +657,12 @@ class Data:
             shift_as_name = as_cls._get_quantity_name(
                 as_cls.Quantity.Shift, as_cls.PeakType.AntiStokes, index)
             ls = ()
-            if sync(self._file.object_exists(concatenate_paths(self._path, shift_as_name))):
+            coro_as_exists = self._file.object_exists(concatenate_paths(self._path, shift_as_name))
+            coro_s_exists = self._file.object_exists(concatenate_paths(self._path, shift_s_name))
+            as_exists, s_exists = await asyncio.gather(coro_as_exists, coro_s_exists)
+            if as_exists:
                 ls += (as_cls.PeakType.AntiStokes,)
-            if sync(self._file.object_exists(concatenate_paths(self._path, shift_s_name))):
+            if s_exists:
                 ls += (as_cls.PeakType.Stokes,)
             return ls
 

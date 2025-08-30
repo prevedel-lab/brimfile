@@ -3,7 +3,7 @@ from .file_abstraction import FileAbstraction, sync
 __docformat__ = "google"
 
 
-def of_object(file: FileAbstraction, obj) -> str:
+async def of_object(file: FileAbstraction, obj) -> str:
     """
     Get the units of a given object in a file.
 
@@ -15,7 +15,7 @@ def of_object(file: FileAbstraction, obj) -> str:
         str: The units of the object. If the units are not found, an empty string is returned.
     """
     try:
-        return sync(file.get_attr(obj, 'Units'))
+        return await file.get_attr(obj, 'Units')
     except Exception:
         # If the attribute 'units' is not found, return an empty string
         return ''
