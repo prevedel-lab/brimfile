@@ -296,7 +296,21 @@ class Data:
             raise ValueError("coor must contain 3 values for z, y, x")
 
         index = int(self._spatial_map[coor])
-        return self.get_spectrum(index)
+        return self.get_spectrum(index)    
+          
+    def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0):
+        """
+            Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
+            #TODO complete the documentation
+        """
+        if len(coor) != 3:
+            raise ValueError("coor must contain 3 values for z, y, x")
+        index = int(self._spatial_map[coor])
+        spectrum, quantities = _gather_sync(
+            self.get_spectrum_async(index),
+            ar._get_all_quantities_at_index(index, index_peak)
+        )
+        return spectrum, quantities
 
     class AnalysisResults:
         """
@@ -560,7 +574,7 @@ class Data:
                 coord (tuple): A tuple of 3 elements corresponding to the z, y, x coordinate in the image
                 qt (Quantity): The quantity to retrieve the image for (e.g. shift).
                 pt (PeakType, optional): The type of peak to consider (default is PeakType.AntiStokes).
-                index (int, optional): The index of the data to retrieve, if multiple are present (default is 0).
+                index (int, optional): The index of the data to retrieve, if multiple peaks are present (default is 0).
 
             Returns:
                 The requested quantity, which is a scalar or a multidimensional array (depending on whether there are additional parameters in the current Data group)
@@ -600,6 +614,70 @@ class Data:
                 data = await self._get_quantity(qt, pt, index)
                 value = await _async_getitem(data, (i, ...))
             return value
+        def get_all_quantities_in_image(self, coor: tuple, index_peak: int = 0) -> dict:
+            """
+            Retrieve all available quantities at a specific spatial coordinate.
+            # see `brimfile.data.Data.AnalysisResults._get_all_quantities_at_index` for more details
+            """
+            if len(coor) != 3:
+                raise ValueError("coor must contain 3 values for z, y, x")
+            index = int(self._spatial_map[coor])
+            return sync(self._get_all_quantities_at_index(index, index_peak))
+        async def _get_all_quantities_at_index(self, index: int, index_peak: int = 0) -> dict:
+            """
+            Retrieve all available quantities for a specific spatial index.
+            Args:
+                index (int): The spatial index to retrieve quantities for.
+                index_peak (int, optional): The index of the data to retrieve, if multiple peaks are present (default is 0).
+            Returns:
+                dict: A dictionary of Metadata.Item in the form `result[quantity.name][peak.name] = bls.Metadata.Item(value, units)`
+            """
+            async def _get_existing_quantity_at_index_async(self,  pt: Data.AnalysisResults.PeakType = Data.AnalysisResults.PeakType.AntiStokes):
+                as_cls = Data.AnalysisResults
+                qts_ls = ()
+                dts_ls = ()
+
+                qts = [qt for qt in as_cls.Quantity]
+                coros = [self._file.open_dataset(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index_peak))) for qt in qts]
+                
+                # open the datasets asynchronously, excluding those that do not exist
+                opened_dts = await asyncio.gather(*coros, return_exceptions=True)
+                for i, opened_qt in enumerate(opened_dts):
+                    if not isinstance(opened_qt, Exception):
+                        qts_ls += (qts[i],)
+                        dts_ls += (opened_dts[i],)
+                # get the values at the specified index
+                coros_values = [_async_getitem(dt, (index, ...)) for dt in dts_ls]
+                coros_units = [units.of_object(self._file, dt) for dt in dts_ls]
+                ret_ls = await asyncio.gather(*coros_values, *coros_units)
+                n = len(coros_values)
+                value_ls = [Metadata.Item(ret_ls[i], ret_ls[n+i]) for i in range(n)]
+                return qts_ls, value_ls
+            antiStokes, stokes = await asyncio.gather(
+                _get_existing_quantity_at_index_async(self, Data.AnalysisResults.PeakType.AntiStokes),
+                _get_existing_quantity_at_index_async(self, Data.AnalysisResults.PeakType.Stokes)
+            )
+            res = {}
+            # combine the results, including the average
+            for qt in (set(antiStokes[0]) | set(stokes[0])):
+                res[qt.name] = {}
+                pts = ()
+                #Stokes
+                if qt in stokes[0]:
+                    res[qt.name][Data.AnalysisResults.PeakType.Stokes.name] = stokes[1][stokes[0].index(qt)]
+                    pts += (Data.AnalysisResults.PeakType.Stokes,)
+                #AntiStokes
+                if qt in antiStokes[0]:
+                    res[qt.name][Data.AnalysisResults.PeakType.AntiStokes.name] = antiStokes[1][antiStokes[0].index(qt)]
+                    pts += (Data.AnalysisResults.PeakType.AntiStokes,)
+                #average getting the units of the first peak
+                res[qt.name][Data.AnalysisResults.PeakType.average.name] = Metadata.Item(
+                    np.mean([res[qt.name][pt.name].value for pt in pts]), 
+                    res[qt.name][pts[0].name].units
+                    )
+                if not all(res[qt.name][pt.name].units == res[qt.name][pts[0].name].units for pt in pts):
+                    warnings.warn(f"The units of {pts} are not consistent.")
+            return res
 
         @classmethod
         def _get_quantity_name(cls, qt: Quantity, pt: PeakType, index: int) -> str:
@@ -668,6 +746,11 @@ class Data:
 
         def list_existing_quantities(self,  pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
             """
+            Synchronous wrapper for `list_existing_quantities_async` (see doc for `brimfile.data.Data.AnalysisResults.list_existing_quantities_async`)
+            """
+            return sync(self.list_existing_quantities_async(pt, index))
+        async def list_existing_quantities_async(self,  pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
+            """
             Returns a tuple of existing quantities for the specified index.
             Args:
                 index (int, optional): The index of the peak to check (in case of multi-peak fit). Defaults to 0.
@@ -676,9 +759,14 @@ class Data:
             """
             as_cls = Data.AnalysisResults
             ls = ()
-            for qt in as_cls.Quantity:
-                if sync(self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index)))):
-                    ls += (qt,)
+
+            qts = [qt for qt in as_cls.Quantity]
+            coros = [self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index))) for qt in qts]
+            
+            qt_exists = await asyncio.gather(*coros)
+            for i, exists in enumerate(qt_exists):
+                if exists:
+                    ls += (qts[i],)
             return ls
 
     def get_metadata(self):

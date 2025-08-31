@@ -90,6 +90,9 @@ class ZarrFile {
   async open_dataset(full_path){
     await this.#wait_for_ready()
     full_path = standardize_path(full_path);
+    if (! await this.object_exists(full_path)) {
+      throw new Error(`The object '${full_path}' doesn't exist!`)
+    }
     // for now simply return the path since the array object itself is not json transferrable
     return full_path
     const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
