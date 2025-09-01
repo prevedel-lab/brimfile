@@ -2,9 +2,9 @@ import { ZarrFile, init_file } from './zarr_file.js';
 
 // Loads the Zarr and create a bls_file in the globals of pyodide
 function loadZarrFile(file) {
-    const zarr_file_js = init_file(file)
+    const {zarr_file_js , filename}  = init_file(file)
 
-    const locals = pyodide.toPy({ zarr_file_js: zarr_file_js, zarr_filename: file.name });
+    const locals = pyodide.toPy({ zarr_file_js: zarr_file_js, zarr_filename: filename });
     pyodide.runPython(`
         import brimfile as bls
         from brimfile.file_abstraction import _zarrFile

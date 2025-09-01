@@ -47,17 +47,19 @@ class ZarrFile {
     }
   }
   async init(file) {
-    this.store = await ZipStore.fromBlob(file);
     this.filename = file.name;
-    this.root = await zarr.open.v3(this.store, { kind: "group" });
-    this.store_type = ZarrFile.StoreType.ZIP;    
+    this.store_type = ZarrFile.StoreType.ZIP;  
+
+    this.store = await ZipStore.fromBlob(file);
+    this.root = await zarr.open.v3(this.store, { kind: "group" });  
   }
 
   async init_from_url(url) {
-    this.store = new FetchStore(url);
     this.filename = url;
-    this.root = await zarr.open.v3(this.store, { kind: "group" });
     this.store_type = ZarrFile.StoreType.S3;
+
+    this.store = new FetchStore(url);
+    this.root = await zarr.open.v3(this.store, { kind: "group" });
   }
 
   /******** Attribute Management ********/
@@ -218,13 +220,20 @@ class ZarrFile {
 // when .is_ready()==true
 function init_file(file) {
   let zarr_file = new ZarrFile();
+  let filename = ""
   if (file instanceof File) {
+    filename = file.name;
     zarr_file.init(file).then(() => {
       zarr_file.ready = true;
     });
   }
   else if (typeof file == 'string') {
     file = standardize_path(file);
+    filename = file;
+    //make sure the filename doesn't end with '/'
+    if (filename.endsWith('/')) {
+      filename = filename.slice(0, -1);
+    }
     zarr_file.init_from_url(file).then(() => {
       zarr_file.ready = true;
     });
@@ -232,7 +241,7 @@ function init_file(file) {
   else {
     throw new Error("'file' needs to be either a File object or a url!")
   }
-  return zarr_file;
+  return {zarr_file_js: zarr_file, filename: filename};
 }
 
 export { ZarrFile, init_file };
