@@ -71,11 +71,15 @@ class Data:
             cv = sync(self._file.open_dataset(cv_path))
 
             #read the pixel size from the 'Cartesian visualisation' dataset
-            px_size_val = 3*(1,)
+            px_size_val = None
             px_size_units = None
             try:
                 px_size_val = sync(self._file.get_attr(cv, 'element_size'))
+                if px_size_val is None or len(px_size_val) != 3:
+                    raise ValueError(
+                        "The 'element_size' attribute of 'Cartesian_visualisation' must be a tuple of 3 elements")
             except Exception:
+                px_size_val = 3*(1,)
                 warnings.warn(
                     "No pixel size defined for Cartesian visualisation")            
             px_size_units = units.of_attribute(
