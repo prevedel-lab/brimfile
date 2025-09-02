@@ -1,4 +1,4 @@
-from .file_abstraction import FileAbstraction, sync
+from .file_abstraction import FileAbstraction, sync, _gather_sync
 from .utils import concatenate_paths
 
 from . import units
@@ -6,6 +6,8 @@ from .constants import brim_obj_names, reserved_attr_names
 
 import warnings
 from enum import Enum
+
+import asyncio
 
 __docformat__ = "google"
 
@@ -58,7 +60,7 @@ class Metadata:
             if not sync(file.object_exists(group)):
                 sync(file.create_group(group))
 
-    def _get_single_item(self, type: Type, name: str) -> Item:
+    async def _get_single_item(self, type: Type, name: str) -> Item:
         """
         Retrieve a single metadata.
         This method attempts to fetch a metadata attribute based on the specified type and name.
@@ -78,14 +80,20 @@ class Metadata:
         if self._data_path is not None:
             attr_name = f"{type.value}.{name}"
             try:
-                return Metadata.Item(sync(self._file.get_attr(self._data_path, attr_name)),
-                                     units.of_attribute(self._file, self._data_path, attr_name))
+                val, u = await asyncio.gather(
+                    self._file.get_attr(self._data_path, attr_name),
+                    units.of_attribute(self._file, self._data_path, attr_name)
+                )
+                return Metadata.Item(val, u)
             except Exception:
                 pass
         # otherwise we load the metadata from the metadata group
         group = concatenate_paths(self._path, type.value)
-        return Metadata.Item(sync(self._file.get_attr(group, name)),
-                             units.of_attribute(self._file, group, name))
+        val, u = await asyncio.gather(
+            self._file.get_attr(group, name),
+            units.of_attribute(self._file, group, name)
+        )
+        return Metadata.Item(val, u)
 
     def __getitem__(self, key: str) -> Item:
         """
@@ -102,9 +110,14 @@ class Metadata:
         if group not in Metadata.Type.__members__:
             raise KeyError(
                 f"Group {group} not valid. It must be one of {list(Metadata.Type.__members__)}")
-        return self._get_single_item(Metadata.Type[group], obj)
+        return sync(self._get_single_item(Metadata.Type[group], obj))
 
     def to_dict(self, type: Type) -> dict:
+        """
+        Returns the metadata of a specific type as a dictionary. See doc of `to_dict_async`.
+        """
+        return sync(self.to_dict_async(type))
+    async def to_dict_async(self, type: Type) -> dict:
         """
         Returns the metadata of a specific type as a dictionary.
         Returns:
@@ -116,26 +129,30 @@ class Metadata:
         # if 'self' is linked to a specific data group, we first check if the metadata is defined in that group
         local_attrs = []
         if self._data_path is not None:
-            attrs = sync(self._file.list_attributes(self._data_path))
+            attrs = await self._file.list_attributes(self._data_path)
             group = f"{type.value}."
             attrs = [attr for attr in attrs if attr.startswith(
                 group) and not attr.endswith('_units')]
-            for attr in attrs:
-                val = sync(self._file.get_attr(self._data_path, attr))
-                u = units.of_attribute(self._file, self._data_path, attr)
+            coros_attrs = [self._file.get_attr(self._data_path, attr) for attr in attrs]
+            coros_units = [units.of_attribute(self._file, self._data_path, attr) for attr in attrs]
+            res = await asyncio.gather(*coros_attrs, *coros_units)
+            for i, attr in enumerate(attrs):
+                val = res[i]
+                u = res[i + len(attrs)]
                 out_dict[attr[len(group):]] = Metadata.Item(val, u)
             local_attrs = [attr[len(group):] for attr in attrs]
 
         # otherwise we load the metadata from the metadata group
         group = concatenate_paths(self._path, type.value)
-        attrs = sync(self._file.list_attributes(group))
-        for attr in attrs:
-            if attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names:
-                # we already loaded this attribute from the data group
-                # or it is the units attribute
-                continue
-            val = sync(self._file.get_attr(group, attr))
-            u = units.of_attribute(self._file, group, attr)
+        attrs = await self._file.list_attributes(group)
+        # remove the attributes that are already loaded from the data group or that are units attributes
+        attrs = [attr for attr in attrs if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]          
+        coros_attrs = [self._file.get_attr(group, attr) for attr in attrs]
+        coros_units = [units.of_attribute(self._file, group, attr) for attr in attrs]
+        res = await asyncio.gather(*coros_attrs, *coros_units)
+        for i, attr in enumerate(attrs):
+            val = res[i]
+            u = res[i + len(attrs)]
             out_dict[attr] = Metadata.Item(val, u)
 
         return out_dict
@@ -177,9 +194,13 @@ class Metadata:
             dict: A dictionary containing all the elements in Metadata.Type as a key.
                     Each of the key is defining a dictionary, as returned by Metadata.to_dict()
         """
-        full_metadata = {}
-        for type in Metadata.Type:
-            full_metadata[type.name] = self.to_dict(type)
+        types = [type for type in Metadata.Type]
+        coros = [self.to_dict_async(type) for type in types]
+
+        #retrieve all metadata asynchronously
+        res = _gather_sync(*coros)
+        #assign them to a dictionary
+        full_metadata = {type.name: dic for type, dic in zip(types, res)}
         return full_metadata
 
     # -------------------- Enums definition --------------------

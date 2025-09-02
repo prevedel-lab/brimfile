@@ -33,7 +33,7 @@ def add_to_object(file: FileAbstraction, obj, units: str):
     sync(file.create_attr(obj, 'Units', units))
 
 
-def of_attribute(file: FileAbstraction, obj, attr_name: str) -> str:
+async def of_attribute(file: FileAbstraction, obj, attr_name: str) -> str:
     """
     Get the units of an attribute attached to a given object in a file.
 
@@ -46,7 +46,7 @@ def of_attribute(file: FileAbstraction, obj, attr_name: str) -> str:
         str: The units of the attribute. If the units are not found, an empty string is returned.
     """
     try:
-        return sync(file.get_attr(obj, f"{attr_name}_units"))
+        return await file.get_attr(obj, f"{attr_name}_units")
     except Exception:
         # If the attribute f"{attr_name}_units" is not found, return an empty string
         return ''

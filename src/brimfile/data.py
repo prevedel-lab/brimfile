@@ -82,8 +82,8 @@ class Data:
                 px_size_val = 3*(1,)
                 warnings.warn(
                     "No pixel size defined for Cartesian visualisation")            
-            px_size_units = units.of_attribute(
-                    self._file, cv, 'element_size')
+            px_size_units = sync(units.of_attribute(
+                    self._file, cv, 'element_size'))
             px_size = ()
             for i in range(3):
                 # if px_size_val[i] is not a number, set it to 1 and px_size_units to None
