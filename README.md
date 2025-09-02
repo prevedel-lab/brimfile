@@ -6,9 +6,11 @@
 
 The detailed specs of the brim file format can be found [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md).
 
-## Where to get it
+## How to install it
 
-*brimfile* can be installed from PyPI using `pip`:
+We recommend installing *brimfile* in a [virtual environment](https://docs.python.org/3/library/venv.html).
+
+After activating the environment, *brimfile* can be installed from PyPI using `pip`:
 ```bash
 pip install brimfile
 ```

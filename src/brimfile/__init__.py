@@ -21,7 +21,9 @@ metadata and analysis results through their corresponding classes.
 
 ## Install brimfile
 
-Simply run:
+We recommend installing *brimfile* in a [virtual environment](https://docs.python.org/3/library/venv.html).
+
+After activating the new environment, simply run:
 
 ```bash
 pip install brimfile

@@ -6,7 +6,7 @@ from .metadata import Metadata
 from .utils import concatenate_paths
 from .constants import brim_obj_names
 
-from .file_abstraction import FileAbstraction, StoreType
+from .file_abstraction import FileAbstraction, StoreType, sync
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys
@@ -51,10 +51,10 @@ class File:
             pass
 
     def close(self) -> None:
-        self._file.close()
+        sync(self._file.close())
 
     def is_read_only(self) -> bool:
-        return self._file.is_read_only()
+        return sync(self._file.is_read_only())
 
     def is_valid(self) -> bool:
         """
@@ -67,12 +67,14 @@ class File:
         return True
 
     @classmethod
-    def create(cls, filename: str, store_type: StoreType = StoreType.AUTO):
+    def create(cls, filename: str, store_type: StoreType = StoreType.AUTO, brim_version: str = '0.1') -> 'File':
         """
         Create a new brim file with the specified filename. If the file exists already it will generate an error.
 
         Args:
             filename (str): Path to the brim file to be created.
+            store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
+            brim_version (str): Version of the brim file format to use. Default is '0.1'.
 
         Returns:
             File: An instance of the File class representing the newly created brim file.
@@ -81,11 +83,11 @@ class File:
         f = cls(filename, mode='w-', store_type=store_type)
 
         # File version and SubType
-        f._file.create_attr('/', 'brim_version', '0.1')
-        f._file.create_attr('/', 'SubTypeID', 0)  # Default subtype
+        sync(f._file.create_attr('/', 'brim_version', brim_version))
+        sync(f._file.create_attr('/', 'SubTypeID', 0))  # Default subtype
 
         # Root Brillouin_data group
-        fr = f._file.create_group(brim_obj_names.Brillouin_base_path)
+        fr = sync(f._file.create_group(brim_obj_names.Brillouin_base_path))
 
         # Create the metadata group
         Metadata._create_group_in_file(f._file)

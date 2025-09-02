@@ -1,4 +1,4 @@
-from .file_abstraction import FileAbstraction
+from .file_abstraction import FileAbstraction, sync
 from .utils import concatenate_paths
 
 from . import units
@@ -55,8 +55,8 @@ class Metadata:
         for t in Metadata.Type:
             group = concatenate_paths(
                 brim_obj_names.Brillouin_base_path, brim_obj_names.metadata.base_group, t.value)
-            if not file.object_exists(group):
-                file.create_group(group)
+            if not sync(file.object_exists(group)):
+                sync(file.create_group(group))
 
     def _get_single_item(self, type: Type, name: str) -> Item:
         """
@@ -78,13 +78,13 @@ class Metadata:
         if self._data_path is not None:
             attr_name = f"{type.value}.{name}"
             try:
-                return Metadata.Item(self._file.get_attr(self._data_path, attr_name),
+                return Metadata.Item(sync(self._file.get_attr(self._data_path, attr_name)),
                                      units.of_attribute(self._file, self._data_path, attr_name))
             except Exception:
                 pass
         # otherwise we load the metadata from the metadata group
         group = concatenate_paths(self._path, type.value)
-        return Metadata.Item(self._file.get_attr(group, name),
+        return Metadata.Item(sync(self._file.get_attr(group, name)),
                              units.of_attribute(self._file, group, name))
 
     def __getitem__(self, key: str) -> Item:
@@ -116,25 +116,25 @@ class Metadata:
         # if 'self' is linked to a specific data group, we first check if the metadata is defined in that group
         local_attrs = []
         if self._data_path is not None:
-            attrs = self._file.list_attributes(self._data_path)
+            attrs = sync(self._file.list_attributes(self._data_path))
             group = f"{type.value}."
             attrs = [attr for attr in attrs if attr.startswith(
                 group) and not attr.endswith('_units')]
             for attr in attrs:
-                val = self._file.get_attr(self._data_path, attr)
+                val = sync(self._file.get_attr(self._data_path, attr))
                 u = units.of_attribute(self._file, self._data_path, attr)
                 out_dict[attr[len(group):]] = Metadata.Item(val, u)
             local_attrs = [attr[len(group):] for attr in attrs]
 
         # otherwise we load the metadata from the metadata group
         group = concatenate_paths(self._path, type.value)
-        attrs = self._file.list_attributes(group)
+        attrs = sync(self._file.list_attributes(group))
         for attr in attrs:
             if attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names:
                 # we already loaded this attribute from the data group
                 # or it is the units attribute
                 continue
-            val = self._file.get_attr(group, attr)
+            val = sync(self._file.get_attr(group, attr))
             u = units.of_attribute(self._file, group, attr)
             out_dict[attr] = Metadata.Item(val, u)
 
@@ -166,7 +166,7 @@ class Metadata:
             val = value.value
             if isinstance(value.value, Enum):
                 val = value.value.value
-            self._file.create_attr(group, name, val)
+            sync(self._file.create_attr(group, name, val))
             if value.units is not None:
                 units.add_to_attribute(self._file, group, name, value.units)
 

@@ -1,7 +1,7 @@
 import re
 import numpy as np
 
-from .file_abstraction import FileAbstraction
+from .file_abstraction import FileAbstraction, sync
 
 __docformat__ = "google"
 
@@ -42,7 +42,7 @@ def list_objects_matching_pattern(file: FileAbstraction, parent_obj, regexp: str
     # n_par = pattern.groups
 
     matched_objects = []
-    for obj_name in file.list_objects(parent_obj):
+    for obj_name in sync(file.list_objects(parent_obj)):
         match = pattern.match(obj_name)
         if match:
             matched_objects.append((obj_name,) + match.groups())
@@ -57,7 +57,7 @@ def get_object_name(file: FileAbstraction, obj_path: str) -> str:
     If the attribute is not found, the last part of the path is returned instead.
     """
     try:
-        name = file.get_attr(obj_path, 'Name')
+        name = sync(file.get_attr(obj_path, 'Name'))
     except Exception as e:
         name = obj_path.split('/')[-1]
     return name
@@ -69,7 +69,7 @@ def set_object_name(file: FileAbstraction, obj, name: str):
 
     The name is set by attaching a 'Name' attribute to the object.
     """
-    file.create_attr(obj, 'Name', name)
+    sync(file.create_attr(obj, 'Name', name))
 
 def var_to_singleton(var):
     """
