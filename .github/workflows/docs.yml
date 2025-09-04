@@ -28,6 +28,7 @@ jobs:
       # ADJUST THIS: install all dependencies (including pdoc)
       - run: pip install numpy 
       - run: pip install "zarr>=3"
+      - run: pip install h5py
       - run: pip install -e .
       - run: pip install pdoc
       # ADJUST THIS: build your documentation into docs/.
