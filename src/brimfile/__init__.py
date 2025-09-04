@@ -33,7 +33,7 @@ If you also need the support for exporting the analyzed data to OME-Tiff files,
 you can install the optional dependencies with:
 
 ```bash
-pip install brimfile[export-tiff]
+pip install "brimfile[export-tiff]"
 ```
 
 
