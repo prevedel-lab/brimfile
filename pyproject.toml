@@ -33,6 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 remote-store = ["zarr[remote]>=3", "s3fs"]
 export-tiff = ["tifffile"]
+converter = ["h5py"]
 
 [project.urls]
 Documentation = "https://prevedel-lab.github.io/brimfile/"
