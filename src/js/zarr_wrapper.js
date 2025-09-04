@@ -7,11 +7,13 @@ function loadZarrFile(file) {
     const locals = pyodide.toPy({ zarr_file_js: zarr_file_js, zarr_filename: filename });
     pyodide.runPython(`
         import brimfile as bls
-        from brimfile.file_abstraction import _zarrFile
 
+        from brimfile.file_abstraction import _zarrFile
+        from brimview_widgets import CustomJSFileInput
+        
         zf = _zarrFile(zarr_file_js, filename=zarr_filename)
-        global bls_file
         bls_file = bls.File(zf)
+        CustomJSFileInput().set_global_bls(bls_file)
     `, { locals });
     return true;
 }
