@@ -58,6 +58,8 @@ async def get_object_name(file: FileAbstraction, obj_path: str) -> str:
     """
     try:
         name = await file.get_attr(obj_path, 'Name')
+        if name is None or name == '':
+            raise Exception("Name attribute is None")
     except Exception as e:
         name = obj_path.split('/')[-1]
     return name
