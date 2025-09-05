@@ -99,14 +99,15 @@ class BrimConverter:
         for name in LABELS:
             for peak_type in ['AntiStokes', 'Stokes']:
                 try:
-                    quantity = getattr(Data.AnalysisResults.Quantity, name)
-                    data = np.array(ar._get_quantity(quantity, getattr(Data.AnalysisResults.PeakType, peak_type)))
                     dataset_name = f"{name}_{'S' if peak_type == 'Stokes' else 'AS'}"
-                    data = data if self.map_to == 'flat' else np.reshape(data, (Nz, Ny, Nx))                   
+                    quantity_now = getattr(Data.AnalysisResults.Quantity, name)
+                    peak_type_now = getattr(Data.AnalysisResults.PeakType, peak_type)                  
+                    data, _ = ar.get_image(quantity_now, peak_type_now)
+                    data = data if not self.map_to == 'flat' else data.flatten() 
                     if treatment_group is None:
                         treatment_group = group.require_group("Treatment")
                         treatment_group.attrs["Brillouin_type"] = "Treatment"
-                    ds = treatment_group.create_dataset(f"/Brillouin/Data_{index}/Treatment/{dataset_name}", data=data)    
+                    ds = treatment_group.create_dataset(dataset_name, data=data)
                     if name in BRILLOUIN_TYPE_MAPPING:
                         ds.attrs["Brillouin_type"] = BRILLOUIN_TYPE_MAPPING[name]
                     else:
@@ -115,8 +116,8 @@ class BrimConverter:
                     # Sal, leaving out units for now, should append to brillouin_type as _(unit) instead?
                     #units = ar.get_units(quantity)
                     #ds.attrs["units"] = units
-                except Exception:
-                    pass # add an actual error here that a specific brimfile Dataset type wasn't found?
+                except Exception as e:
+                    print(f"Exception for {dataset_name} ({peak_type}): {e}")
 
                 # Sal, previous way of parsing units that was more consistent with brim way, yet will clutter brimx file
                 """try:
