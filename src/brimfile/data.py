@@ -41,7 +41,7 @@ class Data:
         """
         Returns the name of the data group.
         """
-        return get_object_name(self._file, self._path)
+        return sync(get_object_name(self._file, self._path))
     
     def get_index(self):
         """
@@ -356,7 +356,7 @@ class Data:
             """
             Returns the name of the Analysis group.
             """
-            return get_object_name(self._file, self._path)
+            return sync(get_object_name(self._file, self._path))
 
         @classmethod
         def _create_new(cls, data: 'Data', index: int) -> 'Data.AnalysisResults':
@@ -880,7 +880,7 @@ class Data:
 
     def list_AnalysisResults(self, retrieve_custom_name=False) -> list:
         """
-        List all AnalysisResults groups in the current data group.
+        List all AnalysisResults groups in the current data group. The list is ordered by index.
 
         Returns:
             list: A list of dictionaries, each containing:
@@ -893,15 +893,21 @@ class Data:
 
         matched_objs = list_objects_matching_pattern(
             self._file, self._group, brim_obj_names.data.analysis_results + r"_(\d+)$")
-        for matched_obj in matched_objs:
+        async def _make_dict_item(matched_obj, retrieve_custom_name):
             name = matched_obj[0]
             index = int(matched_obj[1])
             curr_obj_dict = {'name': name, 'index': index}
             if retrieve_custom_name:
                 ar_path = concatenate_paths(self._path, name)
-                custom_name = get_object_name(self._file, ar_path)
+                custom_name = await get_object_name(self._file, ar_path)
                 curr_obj_dict['custom_name'] = custom_name
-            analysis_results_groups.append(curr_obj_dict)
+            return curr_obj_dict
+        coros = [_make_dict_item(matched_obj, retrieve_custom_name) for matched_obj in matched_objs]
+        dicts = _gather_sync(*coros)
+        for dict_item in dicts:
+            analysis_results_groups.append(dict_item)
+        # Sort the data groups by index
+        analysis_results_groups.sort(key=lambda x: x['index'])
 
         return analysis_results_groups
 
@@ -1083,17 +1089,22 @@ class Data:
 
         matched_objs = list_objects_matching_pattern(
             file, brim_obj_names.Brillouin_base_path, brim_obj_names.data.base_group + r"_(\d+)$")
-        for matched_obj in matched_objs:
+        
+        async def _make_dict_item(matched_obj, retrieve_custom_name):
             name = matched_obj[0]
             index = int(matched_obj[1])
             curr_obj_dict = {'name': name, 'index': index}
             if retrieve_custom_name:
                 path = concatenate_paths(
                     brim_obj_names.Brillouin_base_path, name)
-                custom_name = get_object_name(file, path)
+                custom_name = await get_object_name(file, path)
                 curr_obj_dict['custom_name'] = custom_name
-            data_groups.append(curr_obj_dict)
+            return curr_obj_dict
         
+        coros = [_make_dict_item(matched_obj, retrieve_custom_name) for matched_obj in matched_objs]
+        dicts = _gather_sync(*coros)
+        for dict_item in dicts:
+            data_groups.append(dict_item)        
         # Sort the data groups by index
         data_groups.sort(key=lambda x: x['index'])
 

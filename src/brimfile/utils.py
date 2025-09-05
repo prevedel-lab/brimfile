@@ -49,7 +49,7 @@ def list_objects_matching_pattern(file: FileAbstraction, parent_obj, regexp: str
     return matched_objects
 
 
-def get_object_name(file: FileAbstraction, obj_path: str) -> str:
+async def get_object_name(file: FileAbstraction, obj_path: str) -> str:
     """
     Returns the name of the object.
 
@@ -57,7 +57,7 @@ def get_object_name(file: FileAbstraction, obj_path: str) -> str:
     If the attribute is not found, the last part of the path is returned instead.
     """
     try:
-        name = sync(file.get_attr(obj_path, 'Name'))
+        name = await file.get_attr(obj_path, 'Name')
     except Exception as e:
         name = obj_path.split('/')[-1]
     return name
