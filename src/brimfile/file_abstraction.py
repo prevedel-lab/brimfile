@@ -177,9 +177,13 @@ class StoreType(Enum):
     Enum to represent the type of store used by the Zarr file.
     """
     ZIP = 'zip'
+    """We recommend using zip only for reading files. Writing will work, but at the cost of duplicating entries
+    inside the archive (see https://github.com/zarr-developers/zarr-python/issues/1695).
+    Consider using zarr store instead and zipping it at the end of writing."""
     ZARR = 'zarr'
     S3 = 'S3'
-    AUTO = 'auto' # automatically determine the store type based on the filename (i.e. extension or url schema)
+    AUTO = 'auto' 
+    """Automatically determine the store type based on the filename (i.e. extension or url schema)"""
 
 async def _async_getitem(obj, indices: tuple):
         """

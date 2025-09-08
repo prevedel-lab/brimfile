@@ -47,7 +47,7 @@ It can be used to create a new brim file (`brimfile.file.File.create`) or to ope
 ```Python
 import brimfile as brim
 
-filename = 'path/to/your/file.brim.zip'
+filename = 'path/to/your/file.brim.zarr'
 
 # Open an existing brim file
 f = brim.File(filename)
@@ -183,7 +183,7 @@ Now we can use this function to create a brim file with a data group and some me
     from brimfile import File, Data, Metadata, StoreType
     from datetime import datetime
 
-    filename = 'path/to/your/file.brim.zip' 
+    filename = 'path/to/your/file.brim.zarr' 
 
     f = File.create(filename, store_type=StoreType.AUTO)
 
@@ -215,7 +215,7 @@ and we can read it back:
 ``` Python
     from brimfile import File, Data, Metadata
 
-    filename = 'path/to/your/file.brim.zip' 
+    filename = 'path/to/your/file.brim.zarr' 
 
     f = File(filename)
 

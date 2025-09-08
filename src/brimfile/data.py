@@ -305,7 +305,7 @@ class Data:
     def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0):
         """
             Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
-            #TODO complete the documentation
+            TODO complete the documentation
         """
         if len(coor) != 3:
             raise ValueError("coor must contain 3 values for z, y, x")
@@ -621,7 +621,8 @@ class Data:
         def get_all_quantities_in_image(self, coor: tuple, index_peak: int = 0) -> dict:
             """
             Retrieve all available quantities at a specific spatial coordinate.
-            # see `brimfile.data.Data.AnalysisResults._get_all_quantities_at_index` for more details
+            see `brimfile.data.Data.AnalysisResults._get_all_quantities_at_index` for more details
+            TODO complete the documentation
             """
             if len(coor) != 3:
                 raise ValueError("coor must contain 3 values for z, y, x")
