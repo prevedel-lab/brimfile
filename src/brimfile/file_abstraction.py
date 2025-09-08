@@ -178,7 +178,7 @@ class StoreType(Enum):
     """
     ZIP = 'zip'
     """We recommend using zip only for reading files. Writing will work, but at the cost of duplicating entries
-    inside the archive (see https://github.com/zarr-developers/zarr-python/issues/1695).
+    inside the archive (see [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/1695)).
     Consider using zarr store instead and zipping it at the end of writing."""
     ZARR = 'zarr'
     S3 = 'S3'
