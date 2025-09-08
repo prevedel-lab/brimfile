@@ -1,4 +1,5 @@
 import numpy as np
+import warnings
 
 from .data import Data
 from .metadata import Metadata
@@ -46,12 +47,12 @@ class File:
     def __del__(self):
         try:
             self.close()
-        except Exception as e:
+        except Exception as e:            
             # don't throw an error if the file cannot be closed
-            pass
+            warnings.warn(f"Cannot close the file: {e}")
 
     def close(self) -> None:
-        sync(self._file.close())
+        self._file.close()
 
     def is_read_only(self) -> bool:
         return sync(self._file.is_read_only())

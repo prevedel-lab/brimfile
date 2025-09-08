@@ -155,7 +155,7 @@ class FileAbstraction(ABC):
 
     # -------------------- File Management --------------------
 
-    async def close(self):
+    def close(self):
         """
         Close the file.
         """
@@ -349,6 +349,11 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
             res = await self._zarr_js.list_attributes(str(full_path))
             return _zarrFile.JsProxy_to_py(res)
         
+         # -------------------- File Management --------------------
+
+        def close(self):
+            pass
+
         # -------------------- Properties --------------------
         async def is_read_only(self) -> bool:
             return True
@@ -589,7 +594,7 @@ else:
 
         # -------------------- File Management --------------------
 
-        async def close(self):
+        def close(self):
             self._store.close()
 
         # -------------------- Properties --------------------
