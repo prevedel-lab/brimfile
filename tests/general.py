@@ -2,13 +2,14 @@ import numpy as np
 
 import sys
 import os
+import shutil
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 import brimfile as brim
 
 from datetime import datetime
 
-filename = os.path.abspath(os.path.join(os.path.dirname(__file__), 'file.brim.zip' ))
+filename = os.path.abspath(os.path.join(os.path.dirname(__file__), 'file.brim.zarr' ))
 
 def generate_data():
     def lorentzian(x, x0, w):
@@ -122,4 +123,7 @@ if __name__ == "__main__":
     f.close()
     
     #%% deleting the test file 
-    os.remove(filename)
+    if os.path.isfile(filename):
+        os.remove(filename)
+    elif os.path.isdir(filename):
+        shutil.rmtree(filename)
