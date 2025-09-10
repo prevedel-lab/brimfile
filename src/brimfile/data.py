@@ -337,6 +337,14 @@ class Data:
             AntiStokes = "AS"
             Stokes = "S"
             average = "avg"
+        
+        class FitModel(Enum):
+            Undefined = "Undefined"
+            Lorentzian = "Lorentzian"
+            DHO = "DHO"
+            Gaussian = "Gaussian"
+            Voigt = "Voigt"
+            Custom = "Custom"
 
         def __init__(self, file: FileAbstraction, full_path: str, spatial_map, spatial_map_px_size):
             """
@@ -375,7 +383,7 @@ class Data:
             group = sync(data._file.create_group(ar_full_path))
             return cls(data._file, ar_full_path, data._spatial_map, data._spatial_map_px_size)
 
-        def add_data(self, data_AntiStokes=None, data_Stokes=None):
+        def add_data(self, data_AntiStokes=None, data_Stokes=None, fit_model: 'Data.AnalysisResults.FitModel' = None):
             """
             Adds data for the analysis results for AntiStokes and Stokes peaks to the file.
             
@@ -392,6 +400,7 @@ class Data:
                         - 'RMSE': The root mean square error value.
                         - 'Cov_matrix': The covariance matrix.
                 data_Stokes (dict or list[dict]): same as `data_AntiStokes` for the Stokes peaks.
+                fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
 
                 Both `data_AntiStokes` and `data_Stokes` are optional, but at least one of them must be provided.
             """
@@ -454,6 +463,8 @@ class Data:
                 data_Stokes = var_to_singleton(data_Stokes)
                 for i, d_s in enumerate(data_Stokes):
                     add_data_pt(ar_cls.PeakType.Stokes, d_s, i)
+            if fit_model is not None:
+                sync(self._file.create_attr(ar_group, 'Fit_model', fit_model.value))
 
         def get_units(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str:
             """
@@ -487,6 +498,25 @@ class Data:
             dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
             full_path = concatenate_paths(self._path, dt_name)
             return units.add_to_object(self._file, full_path, un)
+        
+        @property
+        def fit_model(self) -> 'Data.AnalysisResults.FitModel':
+            """
+            Retrieve the fit model used for the analysis.
+
+            Returns:
+                Data.AnalysisResults.FitModel: The fit model used for the analysis.
+            """
+            if not hasattr(self, '_fit_model'):
+                try:
+                    fit_model_str = sync(self._file.get_attr(self._path, 'Fit_model'))
+                    self._fit_model = Data.AnalysisResults.FitModel(fit_model_str)
+                except Exception as e:
+                    if isinstance(e, ValueError):
+                        warnings.warn(
+                            f"Unknown fit model '{fit_model_str}' found in the file.")
+                    self._fit_model = Data.AnalysisResults.FitModel.Undefined        
+            return self._fit_model
 
         def save_image_to_OMETiff(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0, filename: str = None) -> str:
             """
@@ -809,7 +839,7 @@ class Data:
             return (pars, pars_names)
         return (None, None)
 
-    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None) -> AnalysisResults:
+    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
@@ -818,6 +848,7 @@ class Data:
             data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
             index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new Analysis group. Defaults to None.
+            fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
         Returns:
             AnalysisResults: The newly created AnalysisResults object.
         Raises:
@@ -841,9 +872,9 @@ class Data:
             return out_data
         data_AntiStokes = flatten_data(data_AntiStokes)
         data_Stokes = flatten_data(data_Stokes)
-        return self.create_analysis_results_group_raw(data_AntiStokes, data_Stokes, index, name)
+        return self.create_analysis_results_group_raw(data_AntiStokes, data_Stokes, index, name, fit_model=fit_model)
 
-    def create_analysis_results_group_raw(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None) -> AnalysisResults:
+    def create_analysis_results_group_raw(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
@@ -851,6 +882,7 @@ class Data:
             data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
             index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new Analysis group. Defaults to None.
+            fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
         Returns:
             AnalysisResults: The newly created AnalysisResults object.
         Raises:
@@ -875,7 +907,7 @@ class Data:
         ar = Data.AnalysisResults._create_new(self, index)
         if name is not None:
             set_object_name(self._file, ar._path, name)
-        ar.add_data(data_AntiStokes, data_Stokes)
+        ar.add_data(data_AntiStokes, data_Stokes, fit_model=fit_model)
 
         return ar
 

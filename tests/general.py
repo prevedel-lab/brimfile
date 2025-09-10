@@ -61,7 +61,8 @@ if __name__ == "__main__":
                                              'width': width_GHz, 'width_units': 'Hz'},
                                              {'shift':shift_GHz, 'shift_units': 'GHz',
                                              'width': width_GHz, 'width_units': 'Hz'},
-                                             name = 'test1_analysis')
+                                             name = 'test1_analysis',
+                                             fit_model=brim.Data.AnalysisResults.FitModel.Lorentzian)
     f.close()
 
 
@@ -100,6 +101,8 @@ if __name__ == "__main__":
     ar = d.get_analysis_results()
     # get the name of the analysis results
     ar.get_name()
+    # get the fit model
+    ar.fit_model
     # list the existing peak types and quantities in the analysis results
     pt = ar.list_existing_peak_types()
     qt = ar.list_existing_quantities()
