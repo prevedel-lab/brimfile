@@ -5,6 +5,14 @@ brimfile.converter
 This subpackage provides tools to convert between **brim** and **brimX** file
 formats for Brillouin microscopy data.
 
+Installation
+---------------
+To run the brimconverter module you need additional dependencies:
+
+```bash
+pip install "brimfile[converter]"
+```
+
 Main interfaces
 ---------------
 

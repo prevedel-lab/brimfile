@@ -29,11 +29,17 @@ After activating the new environment, simply run:
 pip install brimfile
 ```
 
-If you also need the support for exporting the analyzed data to OME-Tiff files,
+If you also need the support for exporting the analyzed data to OME-TIFF files,
 you can install the optional dependencies with:
 
 ```bash
 pip install "brimfile[export-tiff]"
+```
+
+For accessing remote data (i.e. S3 buckets), you need `remote-store`:
+
+```bash
+pip install "brimfile[remote-store]"
 ```
 
 
