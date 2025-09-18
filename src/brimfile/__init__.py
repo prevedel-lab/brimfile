@@ -42,6 +42,16 @@ For accessing remote data (i.e. S3 buckets), you need `remote-store`:
 pip install "brimfile[remote-store]"
 ```
 
+## Store types
+
+Currently brimfile supports zip, zarr and S3 buckets as a store.
+When opening or creating a file, the storage be selected by using the `brimfile.file_abstraction.StoreType enum; zip and zarr can be used both for reading and writing while S3 only for reading. 
+
+Although it is possible to write directly to zip, this will create duplicated entries in the archive (see [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/1695)).
+
+A possible workaround is to create a .zarr storage instead and zip the folder afterwards.
+Importantly the root of the archive should not contain the folder itself, i.e. you should go inside the .zarr folder, select all the elements there, right click on them to create a .zip archive.
+
 
 ## Use brimfile
 
