@@ -104,7 +104,7 @@ class Data:
                     try:
                         res = await self._file.open_dataset(
                             concatenate_paths(sm_path, coord))
-                        res = np.array(res)
+                        res = await res.to_np_array()
                         res = np.squeeze(res)  # remove single-dimensional entries
                     except Exception as e:
                         # if the coordinate does not exist, return an empty array

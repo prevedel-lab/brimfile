@@ -542,8 +542,13 @@ else:
             """ 
             class _ZarrArray(zarr.AsyncArray):
                 def __array__(self, dtype=None, copy=None):
+                # N.B. this is calling `sync` internally, so it shouldn't be used in async functions!!
                     return zarr.Array(self).__array__(dtype=dtype, copy=copy)
+                async def to_np_array(self, dtype=None, copy=None):
+                # same as __array__ but using async code
+                    return np.array(await self.getitem(...))
                 def __getitem__(self, index):
+                # N.B. this is calling `sync` internally, so it shouldn't be used in async functions!!
                     return zarr.Array(self).__getitem__(index)
             # since @dataclass(frozen=True), we need to use object.__setattr__
             object.__setattr__(obj, '__class__', _ZarrArray)
