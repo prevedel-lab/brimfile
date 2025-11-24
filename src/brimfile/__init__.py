@@ -42,6 +42,43 @@ For accessing remote data (i.e. S3 buckets), you need `remote-store`:
 pip install "brimfile[remote-store]"
 ```
 
+## Quickstart
+
+The following code shows how to:
+- open a .brim file 
+- get an image for the Brillouin shift 
+- get the spectrum at a specific pixel
+- get the metadata.
+
+```Python
+from brimfile import File, Data, Metadata
+Quantity = Data.AnalysisResults.Quantity
+PeakType = Data.AnalysisResults.PeakType
+
+filename = 'path/to/your/file.brim.zarr' 
+f = File(filename)
+
+# get the first data group in the file
+d = f.get_data()
+
+# get the first analysis results in the data group
+ar = d.get_analysis_results()
+
+# get the image for the shift
+img, px_size = ar.get_image(Quantity.Shift, PeakType.average)
+
+# get the spectrum at the pixel (pz,py,px)
+(pz,py,px) = (0,0,0)
+PSD, frequency, PSD_units, frequency_units = d.get_spectrum_in_image((pz,py,px))
+
+# get the metadata 
+md = d.get_metadata()
+all_metadata = md.all_to_dict()
+
+# close the file
+f.close()
+```
+
 ## Store types
 
 Currently brimfile supports zip, zarr and S3 buckets as a store.
