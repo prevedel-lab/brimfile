@@ -32,7 +32,7 @@ jobs:
         run: |
           pip install ".[remote-store, export-tiff]"
           conda install -n base conda-pack
-          conda-pack -n ${{env.VENV-NAME}} -o ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz          
+          conda run -n base conda pack -n ${{env.VENV-NAME}} -o ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz          
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
