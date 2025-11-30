@@ -1,0 +1,61 @@
+name: Build Conda Relocatable Environments
+
+on:
+  workflow_dispatch:
+
+env:
+    VENV-NAME: venv
+
+permissions:
+    contents: write
+
+jobs:
+  build:
+    name: Build Relocatable Conda Env on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Miniconda and create environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: ${{env.VENV-NAME}}
+          python-version: '3.11'
+
+      - name: Configure and pack environment
+        run: |
+          pip install ".[remote-store, export-tiff]"
+          conda install -n base conda-pack
+          conda run -n base conda pack -n ${{env.VENV-NAME}} -o ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz          
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: venv-${{ matrix.os }}
+          path: venv-${{ matrix.os }}.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: ./dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          tag_name: ${{ github.ref_name }}
+          name: Venv ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
