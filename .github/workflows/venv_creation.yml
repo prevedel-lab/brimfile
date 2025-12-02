@@ -32,13 +32,36 @@ jobs:
         run: |
           pip install ".[remote-store, export-tiff]"
           conda install -n base conda-pack
-          conda run -n base conda pack -n ${{env.VENV-NAME}} -o ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz          
+          conda run -n base conda pack -n ${{env.VENV-NAME}} -o ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz
+        
+      - name: Extract tar.gz
+        shell: bash
+        if: runner.os != 'Windows'
+        run: |
+            mkdir ${{env.VENV-NAME}}-${{ matrix.os }}/
+            tar -x -f ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz -C ${{env.VENV-NAME}}-${{ matrix.os }}/
+
+      - name: Extract tar.gz (Windows)
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+            mkdir ${{env.VENV-NAME}}-${{ matrix.os }}/
+            tar -x -f ${{env.VENV-NAME}}-${{ matrix.os }}.tar.gz -C ${{env.VENV-NAME}}-${{ matrix.os }}/
+
+      - name: Zip (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: zip -9 -r ${{env.VENV-NAME}}-${{ matrix.os }}.zip ${{env.VENV-NAME}}-${{ matrix.os }}/
+
+      - name: Zip (Windows)
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path ${{env.VENV-NAME}}-${{ matrix.os }} -DestinationPath ${{env.VENV-NAME}}-${{ matrix.os }}.zip
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: venv-${{ matrix.os }}
-          path: venv-${{ matrix.os }}.tar.gz
+          path: venv-${{ matrix.os }}.zip
 
   release:
     name: Create GitHub Release
@@ -54,8 +77,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
-          tag_name: ${{ github.ref_name }}
-          name: Venv ${{ github.ref_name }}
+          files: dist/**/*.zip
+          tag_name: venv_${{ github.ref_name }}
+          name: Python environment ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
