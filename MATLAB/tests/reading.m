@@ -1,18 +1,3 @@
-%% Initialize the brimfile module
-% It is highly reccomanded to set up a virtual environment
-% To know how to do, see https://github.com/prevedel-lab/brimfile?tab=readme-ov-file#how-to-install-it
-
-% specify the path of the python executable in the virtual environment
-% see documentation at https://www.mathworks.com/help/matlab/matlab_external/install-supported-python-implementation.html#buialof-39
-venv_path = '../../.venv/bin/python';
-
-% add the path containing the brimfile module
-addpath('../')
-
-% if you want to use the default environment (no venv) you can just call
-% brimfile.init()
-brim = brimfile.init(venv_path);
-
 %% open the .brim file
 % Set up file path
 filename = '/path/to/file.brim.zarr';

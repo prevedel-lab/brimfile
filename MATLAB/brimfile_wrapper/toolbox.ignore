@@ -40,3 +40,5 @@
 
 % Project resources folder
 resources/
+
+.DS_store
