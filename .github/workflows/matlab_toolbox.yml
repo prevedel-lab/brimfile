@@ -1,0 +1,50 @@
+name: Build MATLAB Toolbox
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-toolbox:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+            release: R2025b
+            cache: true
+
+      - name: Build toolbox
+        uses: matlab-actions/run-command@v1
+        with:
+          command: |
+            projectFile = 'MATLAB/brimfile_wrapper/brimfile_wrapper.prj';
+            outFile = 'brimfile.mltbx';
+            matlab.addons.toolbox.packageToolbox(projectFile, outFile);
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brimfile_toolbox
+          path: brimfile.mltbx
+    
+  release:
+    name: Create GitHub Release
+    needs: build-toolbox
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: brimfile.mltbx
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: brimfile.mltbx
+          tag_name: matlab_toolbox_${{ github.ref_name }}
+          name: Matlab ToolBox ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

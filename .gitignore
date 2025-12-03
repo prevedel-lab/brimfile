@@ -5,5 +5,4 @@ src/brimfile/__pycache__/*
 dist/*
 src/brimfile/converter/__pycache__/*
 # MATLAB files
-MATLAB/brimfile_wrapper/resources
 *.asv
