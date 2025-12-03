@@ -55,3 +55,9 @@ all_metadata = md.all_to_dict()
 # close the file
 f.close()
 ```
+
+## Matlab support
+
+You can download the [Matlab toolbox](https://github.com/prevedel-lab/brimfile/releases/tag/matlab_toolbox_main), which is basically a wrapper around the Python brimfile package, so you can refer to the [same documentation](https://prevedel-lab.github.io/brimfile/). We only support Matlab >= R2023b, as brimfile needs Python 3.11.
+
+Note that the current version of the Matlab toolbox is not supporting all the functions defined in brimfile and it has not been tested extensively yet.

@@ -1,6 +1,6 @@
 %% open the .brim file
 % Set up file path
-filename = '/path/to/file.brim.zarr';
+filename = 'https://s3.embl.de/brim-example-files/drosophila_LSBM.brim.zarr';
 f = brimfile.File(filename);
 
 f.list_data_groups();

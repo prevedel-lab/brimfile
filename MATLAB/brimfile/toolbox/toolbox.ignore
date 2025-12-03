@@ -37,8 +37,3 @@
 % Local MATLAB/Simulink tool caches
 **/slprj
 **/.buildtool/
-
-% Project resources folder
-resources/
-
-.DS_store
