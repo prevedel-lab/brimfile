@@ -25,6 +25,6 @@ function path = get_python_env_path()
     if ismac
         path = fullfile(path, 'bin', 'python');
     elseif ispc
-        path = fullfile(path,'');
+        path = fullfile(path,'python');
     end           
 end
