@@ -1,3 +1,7 @@
+<div align="center">
+    <img src="https://raw.githubusercontent.com/prevedel-lab/brimfile/refs/heads/main//brimfile_logo.png"/>
+</div>
+
 # brimfile package
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://prevedel-lab.github.io/brimfile/brimfile.html)
