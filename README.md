@@ -65,3 +65,16 @@ f.close()
 You can download the [Matlab toolbox](https://github.com/prevedel-lab/brimfile/releases/tag/matlab_toolbox_main), which is basically a wrapper around the Python brimfile package, so you can refer to the [same documentation](https://prevedel-lab.github.io/brimfile/). We only support Matlab >= R2023b, as brimfile needs Python 3.11.
 
 Note that the current version of the Matlab toolbox is not supporting all the functions defined in brimfile and it has not been tested extensively yet.
+
+## ImageJ Plugin
+
+An ImageJ plugin is available in the `imagej-plugin/` directory, which allows you to open and visualize brim files directly in ImageJ. The plugin uses [GraalPy](https://www.graalvm.org/python/) to bridge Java and Python, calling the brimfile package directly.
+
+### Quick Start
+
+```bash
+cd imagej-plugin
+./build.sh  # or build.bat on Windows
+```
+
+Then copy the generated JAR files to your ImageJ installation. See the [ImageJ plugin README](imagej-plugin/README.md) for detailed instructions.
