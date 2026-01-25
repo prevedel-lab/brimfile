@@ -10,8 +10,6 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
 
 import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * ImageJ plugin to read brim files using the brimfile Python package via GraalPy.
@@ -37,7 +35,9 @@ public class BrimFile_Reader implements PlugIn {
             return; // User cancelled
         }
         
-        String filePath = directory + fileName;
+        // Use File constructor for proper path handling across platforms
+        File file = new File(directory, fileName);
+        String filePath = file.getAbsolutePath();
         
         IJ.showStatus("Loading brim file: " + fileName);
         IJ.showProgress(0.1);
