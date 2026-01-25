@@ -79,13 +79,39 @@ The plugin currently loads:
 
 ## Configuration
 
+## Configuration
+
 ### Python Package Path
 
-The plugin automatically tries to locate the `brimfile` Python package by searching:
-1. `src/` directory in the current working directory
-2. `src/` directory in the parent directory
+The plugin automatically tries to locate the `brimfile` Python package using multiple strategies:
 
-If your brimfile package is installed in a different location, you may need to modify the `getBrimfilePackagePath()` method in `BrimFile_Reader.java`.
+1. **BRIMFILE_PATH environment variable** - Set this to the directory containing the brimfile package
+2. **ImageJ preferences** - Use `Plugins > BrimFile > Configure...` to set the path
+3. **Python site-packages** - If brimfile is installed via pip, it will be found automatically
+4. **Repository structure** - Searches for `src/` directory relative to the working directory
+
+#### Using the Configuration Dialog
+
+1. In ImageJ, go to `Plugins > BrimFile > Configure...`
+2. Enter the path to the directory containing the brimfile package (e.g., `/path/to/brimfile/src`)
+3. Leave empty to use Python's default search path
+4. Click OK to save
+
+#### Using Environment Variables
+
+Set the `BRIMFILE_PATH` environment variable before starting ImageJ:
+
+**Linux/macOS:**
+```bash
+export BRIMFILE_PATH=/path/to/brimfile/src
+ImageJ
+```
+
+**Windows:**
+```cmd
+set BRIMFILE_PATH=C:\path\to\brimfile\src
+ImageJ.exe
+```
 
 ### GraalPy Configuration
 

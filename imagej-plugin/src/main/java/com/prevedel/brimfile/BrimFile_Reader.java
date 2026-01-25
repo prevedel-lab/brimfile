@@ -84,7 +84,13 @@ public class BrimFile_Reader implements PlugIn {
             // Import brimfile package
             IJ.showStatus("Importing brimfile package...");
             pythonContext.eval("python", "import sys");
-            pythonContext.eval("python", "sys.path.append('" + getBrimfilePackagePath() + "')");
+            
+            // Add brimfile path to sys.path if a specific path was found
+            String brimfilePath = getBrimfilePackagePath();
+            if (!brimfilePath.isEmpty()) {
+                pythonContext.eval("python", "sys.path.insert(0, '" + brimfilePath + "')");
+            }
+            
             pythonContext.eval("python", "from brimfile import File");
             pythonContext.eval("python", "from brimfile.data import Data");
 
@@ -205,29 +211,77 @@ public class BrimFile_Reader implements PlugIn {
 
     /**
      * Get the path to the brimfile Python package.
-     * This method attempts to find the brimfile package in the repository structure.
+     * This method attempts to find the brimfile package using multiple strategies:
+     * 1. Check BRIMFILE_PATH environment variable
+     * 2. Check ImageJ preferences
+     * 3. Look for brimfile in standard Python site-packages
+     * 4. Look for the repository src/ directory
      * 
      * @return Path to the brimfile package source directory
      */
     private String getBrimfilePackagePath() {
-        // Try to find the brimfile package in the repository
+        // Strategy 1: Check environment variable
+        String envPath = System.getenv("BRIMFILE_PATH");
+        if (envPath != null && new File(envPath).exists()) {
+            IJ.log("Using brimfile from BRIMFILE_PATH: " + envPath);
+            return envPath;
+        }
+        
+        // Strategy 2: Check ImageJ preferences
+        String prefPath = ij.Prefs.get("brimfile.path", null);
+        if (prefPath != null && new File(prefPath).exists()) {
+            IJ.log("Using brimfile from preferences: " + prefPath);
+            return prefPath;
+        }
+        
+        // Strategy 3: Try to use installed brimfile (let Python find it)
+        // Return empty string to use default Python path
+        try {
+            Context testContext = Context.newBuilder("python")
+                    .allowAllAccess(true)
+                    .option("python.ForceImportSite", "false")
+                    .build();
+            testContext.eval("python", "import brimfile");
+            testContext.close();
+            IJ.log("Using brimfile from Python site-packages");
+            return ""; // Empty string means use Python's default path
+        } catch (Exception e) {
+            // brimfile not in site-packages, continue to next strategy
+        }
+        
+        // Strategy 4: Try to find the brimfile package in the repository structure
         String currentDir = System.getProperty("user.dir");
         File srcDir = new File(currentDir, "src");
         
-        if (srcDir.exists()) {
+        if (srcDir.exists() && new File(srcDir, "brimfile").exists()) {
+            IJ.log("Using brimfile from repository: " + srcDir.getAbsolutePath());
             return srcDir.getAbsolutePath();
         }
         
-        // Try parent directories
+        // Try parent directories (for when plugin is run from imagej-plugin directory)
         File parentDir = new File(currentDir).getParentFile();
         if (parentDir != null) {
             srcDir = new File(parentDir, "src");
-            if (srcDir.exists()) {
+            if (srcDir.exists() && new File(srcDir, "brimfile").exists()) {
+                IJ.log("Using brimfile from repository (parent): " + srcDir.getAbsolutePath());
                 return srcDir.getAbsolutePath();
             }
         }
         
-        // Default to current directory
-        return currentDir;
+        // Try two levels up
+        if (parentDir != null) {
+            File grandparentDir = parentDir.getParentFile();
+            if (grandparentDir != null) {
+                srcDir = new File(grandparentDir, "src");
+                if (srcDir.exists() && new File(srcDir, "brimfile").exists()) {
+                    IJ.log("Using brimfile from repository (grandparent): " + srcDir.getAbsolutePath());
+                    return srcDir.getAbsolutePath();
+                }
+            }
+        }
+        
+        // Default: return empty and let Python use its default path
+        IJ.log("Using default Python path for brimfile");
+        return "";
     }
 }
