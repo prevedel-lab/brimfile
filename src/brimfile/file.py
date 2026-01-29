@@ -83,9 +83,8 @@ class File:
         """
         f = cls(filename, mode='w-', store_type=store_type)
 
-        # File version and SubType
+        # File version
         sync(f._file.create_attr('/', 'brim_version', brim_version))
-        sync(f._file.create_attr('/', 'SubTypeID', 0))  # Default subtype
 
         # Root Brillouin_data group
         fr = sync(f._file.create_group(brim_obj_names.Brillouin_base_path))
