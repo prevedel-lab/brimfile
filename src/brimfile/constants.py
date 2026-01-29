@@ -20,9 +20,3 @@ class brim_obj_names:
         analysis_results = 'Analysis'
         spatial_map = 'Scanning/Spatial_map'
         cartesian_visualisation = 'Scanning/Cartesian_visualisation'
-
-    class metadata:
-        """
-        This class contains the names of the metadata groups in the brim file.
-        """
-        base_group = 'Metadata'

@@ -41,25 +41,23 @@ class Metadata:
             data_full_path (str): The full path to the data group in the file. If None, only the metadata in the file are exposed.
         """
         self._file = file
-        self._path = concatenate_paths(
-            brim_obj_names.Brillouin_base_path, brim_obj_names.metadata.base_group)
+        self._path = brim_obj_names.Brillouin_base_path
+        self._general_metadata = None
         self._data_path = data_full_path
-
-    @classmethod
-    def _create_group_in_file(cls, file: FileAbstraction):
-        """
-        Create the metadata group in the file.
-        This method creates the necessary metadata groups in the file.
-        Args:
-            file (FileAbstraction): The file object where the groups will be created.
-        """
-        # Create the metadata groups
-        for t in Metadata.Type:
-            group = concatenate_paths(
-                brim_obj_names.Brillouin_base_path, brim_obj_names.metadata.base_group, t.value)
-            if not sync(file.object_exists(group)):
-                sync(file.create_group(group))
-
+    
+    async def _load_general_metadata(self):
+        if self._general_metadata is not None:
+            return self._general_metadata   
+        metadata_dict = {}
+        try:
+            metadata_dict = await self._file.get_attr(self._path, 'Metadata')
+        except Exception:
+            # if the metadata group does not exist, create it
+            for type in Metadata.Type:
+                metadata_dict[type.value] = {}
+            await self._file.create_attr(self._path, 'Metadata', metadata_dict)
+        self._general_metadata = metadata_dict
+        return metadata_dict
     async def _get_single_item(self, type: Type, name: str) -> Item:
         """
         Retrieve a single metadata.
@@ -76,24 +74,11 @@ class Metadata:
                        data group or the general metadata group.
         """
 
-        # if 'self' is linked to a specific data group, we first check if the metadata is defined in that group
-        if self._data_path is not None:
-            attr_name = f"{type.value}.{name}"
-            try:
-                val, u = await asyncio.gather(
-                    self._file.get_attr(self._data_path, attr_name),
-                    units.of_attribute(self._file, self._data_path, attr_name)
-                )
-                return Metadata.Item(val, u)
-            except Exception:
-                pass
-        # otherwise we load the metadata from the metadata group
-        group = concatenate_paths(self._path, type.value)
-        val, u = await asyncio.gather(
-            self._file.get_attr(group, name),
-            units.of_attribute(self._file, group, name)
-        )
-        return Metadata.Item(val, u)
+        metadata_dict = await self.to_dict_async(type)
+        if name not in metadata_dict:
+            raise KeyError(
+                f"Metadata attribute {type.value}.{name} not found.")
+        return metadata_dict.get(name)
 
     def __getitem__(self, key: str) -> Item:
         """
@@ -115,11 +100,21 @@ class Metadata:
     def to_dict(self, type: Type) -> dict:
         """
         Returns the metadata of a specific type as a dictionary. See doc of `to_dict_async`.
+        See `to_dict_async` for more details.
+        Args:
+            type (Type): The type of the metadata to retrieve.
+        Returns:
+            dict: A dictionary containing all metadata attributes, where each element is of the type Item.
         """
         return sync(self.to_dict_async(type))
     async def to_dict_async(self, type: Type) -> dict:
         """
         Returns the metadata of a specific type as a dictionary.
+        This method attempts to fetch a metadata attribute based on the specified type and name.
+        If the instance is linked to a specific data group, it first checks if some metadata are
+        defined within that group. If not, it retrieves the metadata from the general metadata group.
+        Args:
+            type (Type): The type of the metadata to retrieve.
         Returns:
             dict: A dictionary containing all metadata attributes, where each element is of the type Item.
         """
@@ -143,16 +138,13 @@ class Metadata:
             local_attrs = [attr[len(group):] for attr in attrs]
 
         # otherwise we load the metadata from the metadata group
-        group = concatenate_paths(self._path, type.value)
-        attrs = await self._file.list_attributes(group)
+        metadata_dict = await self._load_general_metadata()
+        metadata_dict = metadata_dict.get(type.value)
         # remove the attributes that are already loaded from the data group or that are units attributes
-        attrs = [attr for attr in attrs if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]          
-        coros_attrs = [self._file.get_attr(group, attr) for attr in attrs]
-        coros_units = [units.of_attribute(self._file, group, attr) for attr in attrs]
-        res = await asyncio.gather(*coros_attrs, *coros_units)
-        for i, attr in enumerate(attrs):
-            val = res[i]
-            u = res[i + len(attrs)]
+        attrs = [attr for attr in metadata_dict.keys() if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]
+        for attr in attrs:
+            val = metadata_dict.get(attr)
+            u = metadata_dict.get(f"{attr}_units", None)
             out_dict[attr] = Metadata.Item(val, u)
 
         return out_dict
@@ -163,29 +155,39 @@ class Metadata:
         Args:
             type (Type): The type of the metadata to add.
             metadata (dict): A dictionary containing the metadata attributes to add.
-                              Each element must be of the type Item.
+                            Each element must be of type Metadata.Item.
+                            The keys of the dictionary are the names of the attributes.
             local (bool): If True, the metadata will be added to the data group. Otherwise, it will be added to the general metadata group.
         """
+        # to save local metadata, the Metadata object must be linked to a data group
+        if local and self._data_path is None:
+            raise ValueError(
+                "The current metadata object is not linked to a data group. Set local to False to add the metadata to the general metadata group.")
+        if not local:
+            general_metadata = sync(self._load_general_metadata())
+        # iterate over the metadata dictionary and add each attribute
         for key, value in metadata.items():
             if not isinstance(value, Metadata.Item):
                 warnings.warn(f"No units provided for {key}; None is assumed.")
                 # if no units are provided, we assume None
-                value = Metadata.Item(value, None)
+                value = Metadata.Item(value, None)            
+            val = value.value
+            # convert Enum to its value
+            if isinstance(val, Enum):
+                val = val.value
             if local:
-                if self._data_path is None:
-                    raise ValueError(
-                        "The current metadata object is not linked to a data group. Set local to False to add the metadata to the general metadata group.")
                 group = self._data_path
                 name = f"{type.value}.{key}"
+                sync(self._file.create_attr(group, name, val))
+                if value.units is not None:
+                    units.add_to_attribute(self._file, group, name, value.units)
             else:
-                group = concatenate_paths(self._path, type.value)
-                name = key
-            val = value.value
-            if isinstance(value.value, Enum):
-                val = value.value.value
-            sync(self._file.create_attr(group, name, val))
-            if value.units is not None:
-                units.add_to_attribute(self._file, group, name, value.units)
+                general_metadata[type.value][key] = val
+                if value.units is not None:
+                    general_metadata[type.value][f"{key}_units"] = value.units
+        if not local:
+            self._general_metadata = general_metadata
+            sync(self._file.create_attr(self._path, 'Metadata', general_metadata))
 
     def all_to_dict(self) -> dict:
         """

@@ -89,9 +89,6 @@ class File:
         # Root Brillouin_data group
         fr = sync(f._file.create_group(brim_obj_names.Brillouin_base_path))
 
-        # Create the metadata group
-        Metadata._create_group_in_file(f._file)
-
         return f
 
     def create_data_group(self, PSD: np.ndarray, frequency: np.ndarray, px_size_um: tuple, index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
