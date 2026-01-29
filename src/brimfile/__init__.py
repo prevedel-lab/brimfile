@@ -333,7 +333,7 @@ ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filenam
 ```
 """
 
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 
 from .file import File
 from .data import Data
