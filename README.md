@@ -59,6 +59,7 @@ all_metadata = md.all_to_dict()
 # close the file
 f.close()
 ```
+More examples could be found in the [examples folder](examples)
 
 ## Matlab support
 
