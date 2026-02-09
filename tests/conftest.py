@@ -47,6 +47,35 @@ def sample_data():
         'dimensions': (Nz, Ny, Nx)
     }
 
+@pytest.fixture(scope="session")
+def sample_data_sparse(sample_data):
+    """Generate sample spectral data for testing."""
+    PSD = sample_data['PSD']
+    frequency = sample_data['frequency']
+    px_size_um = sample_data['pixel_size']
+    PSD_flat = np.reshape(PSD, (-1, PSD.shape[3]))
+    if frequency.ndim == 4:
+        freq_flat = np.reshape(frequency, (-1, frequency.shape[3]))
+    else:
+        freq_flat = frequency
+    def flatten_arr(arr):
+        return np.reshape(arr, (-1,))
+    shift_GHz_arr = flatten_arr(sample_data['shift'])
+    width_GHz_arr = flatten_arr(sample_data['width'])
+    indices = np.arange(PSD_flat.shape[0])
+    cartesian_vis = np.reshape(indices, PSD.shape[0:3])
+    scanning = {'Cartesian_visualisation': cartesian_vis,
+                'Cartesian_visualisation_pixel': px_size_um, 'Cartesian_visualisation_pixel_unit': 'um'}
+    
+    return {
+        'PSD': PSD_flat,
+        'frequency': freq_flat,
+        'pixel_size': px_size_um,
+        'scanning': scanning,
+        'shift': shift_GHz_arr,
+        'width': width_GHz_arr
+    }
+
 
 @pytest.fixture
 def simple_brim_file(tmp_path, sample_data):

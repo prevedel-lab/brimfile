@@ -35,6 +35,7 @@ class Data:
         self._path = path
         self._group = sync(file.open_group(path))
 
+        self._sparse = self._load_sparse_flag()
         self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
 
     def get_name(self):
@@ -48,6 +49,25 @@ class Data:
         Returns the index of the data group.
         """
         return int(self._path.split('/')[-1].split('_')[-1])
+
+    def _load_sparse_flag(self) -> bool:
+        """
+        Load the 'Sparse' flag for the data group.
+
+        Returns:
+            bool: The value of the 'Sparse' flag, or False if the attribute is not found or invalid.
+        """
+        try:
+            sparse = sync(self._file.get_attr(self._group, 'Sparse'))
+            if isinstance(sparse, bool):
+                return sparse
+            else:
+                warnings.warn(
+                    f"Invalid value for 'Sparse' attribute in {self._path}. Expected a boolean, got {type(sparse)}. Defaulting to False.")
+                return False
+        except Exception:
+            # if the attribute is not found, return the default value False
+            return False
 
     def _load_spatial_mapping(self, load_in_memory: bool=True) -> tuple:
         """
@@ -965,7 +985,8 @@ class Data:
         path = concatenate_paths(self._path, name)
         return Data.AnalysisResults(self._file, path, self._spatial_map, self._spatial_map_px_size)
 
-    def add_data(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, freq_units='GHz', timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
+    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, freq_units='GHz',
+                  timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
         """
         Add data to the current data group.
 
@@ -977,7 +998,8 @@ class Data:
             PSD (np.ndarray): A 2D numpy array representing the Power Spectral Density (PSD) data. The last dimension contains the spectra.
             frequency (np.ndarray): A 1D or 2D numpy array representing the frequency data. 
                 It must be broadcastable to the shape of the PSD array.
-            scanning (dict): A dictionary containing scanning-related data. It may include:
+            scanning (dict): A dictionary containing scanning-related data. It might be omitted is Sparse == false
+            It may include:
                 - 'Spatial_map' (optional): A dictionary containing (up to) 3 arrays (x, y, z) and a string (units)
                 - 'Cartesian_visualisation' (optional): A 3D numpy array containing the association between spatial position and spectra.
                    It must have integer values between 0 and PSD.shape[0]-1, or -1 for invalid entries.
@@ -1001,43 +1023,44 @@ class Data:
         # define the scanning_is_valid variable to check if at least one of 'Spatial_map' or 'Cartesian_visualisation'
         # is present in the scanning dictionary
         scanning_is_valid = False
-        if 'Spatial_map' in scanning:
-            sm = scanning['Spatial_map']
-            size = 0
+        if scanning is not None:
+            if 'Spatial_map' in scanning:
+                sm = scanning['Spatial_map']
+                size = 0
 
-            def check_coor(coor: str):
-                if coor in sm:
-                    sm[coor] = np.array(sm[coor])
-                    size1 = sm[coor].size
-                    if size1 != size and size != 0:
-                        raise ValueError(
-                            f"'{coor}' in 'Spatial_map' is invalid!")
-                    return size1
-            size = check_coor('x')
-            size = check_coor('y')
-            size = check_coor('z')
-            if size == 0:
-                raise ValueError(
-                    "'Spatial_map' should contain at least one x, y or z")
-            scanning_is_valid = True
-        if 'Cartesian_visualisation' in scanning:
-            cv = scanning['Cartesian_visualisation']
-            if not isinstance(cv, np.ndarray) or cv.ndim != 3:
-                raise ValueError(
-                    "Cartesian_visualisation must be a 3D numpy array")
-            if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
-                raise ValueError(
-                    "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
-            if 'Cartesian_visualisation_pixel' in scanning:
-                if len(scanning['Cartesian_visualisation_pixel']) != 3:
+                def check_coor(coor: str):
+                    if coor in sm:
+                        sm[coor] = np.array(sm[coor])
+                        size1 = sm[coor].size
+                        if size1 != size and size != 0:
+                            raise ValueError(
+                                f"'{coor}' in 'Spatial_map' is invalid!")
+                        return size1
+                size = check_coor('x')
+                size = check_coor('y')
+                size = check_coor('z')
+                if size == 0:
                     raise ValueError(
-                        "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
-            else:
-                warnings.warn(
-                    "It is recommended to add 'Cartesian_visualisation_pixel' to the scanning dictionary, to define the pixel size")
-            scanning_is_valid = True
-        if not scanning_is_valid:
-            raise ValueError("scanning is not valid")
+                        "'Spatial_map' should contain at least one x, y or z")
+                scanning_is_valid = True
+            if 'Cartesian_visualisation' in scanning:
+                cv = scanning['Cartesian_visualisation']
+                if not isinstance(cv, np.ndarray) or cv.ndim != 3:
+                    raise ValueError(
+                        "Cartesian_visualisation must be a 3D numpy array")
+                if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
+                    raise ValueError(
+                        "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
+                if 'Cartesian_visualisation_pixel' in scanning:
+                    if len(scanning['Cartesian_visualisation_pixel']) != 3:
+                        raise ValueError(
+                            "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
+                else:
+                    warnings.warn(
+                        "It is recommended to add 'Cartesian_visualisation_pixel' to the scanning dictionary, to define the pixel size")
+                scanning_is_valid = True
+        if not scanning_is_valid and self._sparse:
+            raise ValueError("'scanning' must be provided for sparse data, and must contain at least one of 'Spatial_map' or 'Cartesian_visualisation'")
 
         if timestamp is not None:
             if not isinstance(timestamp, np.ndarray) or timestamp.ndim != 1 or len(timestamp) != PSD.shape[0]:
@@ -1069,36 +1092,37 @@ class Data:
             chunk_size=determine_chunk_size(frequency), compression=compression))
         units.add_to_object(self._file, freq_ds, freq_units)
 
-        if 'Spatial_map' in scanning:
-            sm = scanning['Spatial_map']
-            sm_group = sync(self._file.create_group(concatenate_paths(
-                self._path, brim_obj_names.data.spatial_map)))
-            if 'units' in sm:
-                units.add_to_object(self._file, sm_group, sm['units'])
+        if scanning is not None:
+            if 'Spatial_map' in scanning:
+                sm = scanning['Spatial_map']
+                sm_group = sync(self._file.create_group(concatenate_paths(
+                    self._path, brim_obj_names.data.spatial_map)))
+                if 'units' in sm:
+                    units.add_to_object(self._file, sm_group, sm['units'])
 
-            def add_sm_dataset(coord: str):
-                if coord in sm:
-                    coord_dts = sync(self._file.create_dataset(
-                        sm_group, coord, data=sm[coord], compression=compression))
+                def add_sm_dataset(coord: str):
+                    if coord in sm:
+                        coord_dts = sync(self._file.create_dataset(
+                            sm_group, coord, data=sm[coord], compression=compression))
 
-            add_sm_dataset('x')
-            add_sm_dataset('y')
-            add_sm_dataset('z')
-        if 'Cartesian_visualisation' in scanning:
-            # convert the Cartesian_visualisation to the smallest integer type
-            cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
-            cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
-                                           data=cv_arr, compression=compression))
-            if 'Cartesian_visualisation_pixel' in scanning:
-                sync(self._file.create_attr(
-                    cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
-                if 'Cartesian_visualisation_pixel_unit' in scanning:
-                    px_unit = scanning['Cartesian_visualisation_pixel_unit']
-                else:
-                    warnings.warn(
-                        "No unit provided for Cartesian_visualisation_pixel, defaulting to 'um'")
-                    px_unit = 'um'
-                units.add_to_attribute(self._file, cv, 'element_size', px_unit)
+                add_sm_dataset('x')
+                add_sm_dataset('y')
+                add_sm_dataset('z')
+            if 'Cartesian_visualisation' in scanning:
+                # convert the Cartesian_visualisation to the smallest integer type
+                cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
+                cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
+                                            data=cv_arr, compression=compression))
+                if 'Cartesian_visualisation_pixel' in scanning:
+                    sync(self._file.create_attr(
+                        cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
+                    if 'Cartesian_visualisation_pixel_unit' in scanning:
+                        px_unit = scanning['Cartesian_visualisation_pixel_unit']
+                    else:
+                        warnings.warn(
+                            "No unit provided for Cartesian_visualisation_pixel, defaulting to 'um'")
+                        px_unit = 'um'
+                    units.add_to_attribute(self._file, cv, 'element_size', px_unit)
 
         self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
 
@@ -1164,13 +1188,14 @@ class Data:
         return group_name
 
     @classmethod
-    def _create_new(cls, file: FileAbstraction, index: int, name: str = None) -> 'Data':
+    def _create_new(cls, file: FileAbstraction, index: int, sparse: bool = False, name: str = None) -> 'Data':
         """
         Create a new data group with the specified index.
 
         Args:
             file (File): The parent File object.
             index (int): The index for the new data group.
+            sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             name (str, optional): The name for the new data group. Defaults to None.
 
         Returns:
@@ -1179,6 +1204,7 @@ class Data:
         group_name = Data._generate_group_name(index)
         group = sync(file.create_group(concatenate_paths(
             brim_obj_names.Brillouin_base_path, group_name)))
+        sync(file.create_attr(group, 'Sparse', sparse))
         if name is not None:
             set_object_name(file, group, name)
         return cls(file, concatenate_paths(brim_obj_names.Brillouin_base_path, group_name))
