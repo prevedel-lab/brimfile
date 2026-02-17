@@ -182,7 +182,7 @@ class File:
         elif not sparse:
             warnings.warn("Pixel size is not provided for non-sparse data. It is recommended to provide it for proper data interpretation.")
         # add the data to the data group
-        d._add_data(PSD, frequency, scanning,
+        d._add_data(PSD, frequency, scanning = scanning,
                    timestamp=timestamp, compression=compression)
         return d
 

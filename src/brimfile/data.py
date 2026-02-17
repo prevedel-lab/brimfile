@@ -366,20 +366,26 @@ class Data:
             Voigt = "Voigt"
             Custom = "Custom"
 
-        def __init__(self, file: FileAbstraction, full_path: str, spatial_map, spatial_map_px_size):
+        def __init__(self, file: FileAbstraction, full_path: str, *, data_group_path: str,
+                     spatial_map = None, spatial_map_px_size = None, sparse: bool = False):
             """
             Initialize the AnalysisResults object.
 
             Args:
                 file (File): The parent File object.
                 full_path (str): path of the group storing the analysis results
+                data_group_path (str): path of the data group associated with the analysis results
             """
             self._file = file
             self._path = full_path
+            self._data_group_path = data_group_path
             # self._group = file.open_group(full_path)
             self._spatial_map = spatial_map
             self._spatial_map_px_size = spatial_map_px_size
-
+            self._sparse = sparse
+            if sparse:
+                if spatial_map is None or spatial_map_px_size is None:
+                    raise ValueError("For sparse analysis results, the spatial map and pixel size must be provided.")
         def get_name(self):
             """
             Returns the name of the Analysis group.
@@ -387,7 +393,7 @@ class Data:
             return sync(get_object_name(self._file, self._path))
 
         @classmethod
-        def _create_new(cls, data: 'Data', index: int) -> 'Data.AnalysisResults':
+        def _create_new(cls, data: 'Data', *, index: int, sparse: bool = False) -> 'Data.AnalysisResults':
             """
             Create a new AnalysisResults group.
 
@@ -401,9 +407,12 @@ class Data:
             group_name = f"{brim_obj_names.data.analysis_results}_{index}"
             ar_full_path = concatenate_paths(data._path, group_name)
             group = sync(data._file.create_group(ar_full_path))
-            return cls(data._file, ar_full_path, data._spatial_map, data._spatial_map_px_size)
+            return cls(data._file, ar_full_path, data_group_path=data._path,
+                       spatial_map=data._spatial_map, spatial_map_px_size=data._spatial_map_px_size,
+                       sparse=sparse)
 
-        def add_data(self, data_AntiStokes=None, data_Stokes=None, fit_model: 'Data.AnalysisResults.FitModel' = None):
+        def add_data(self, data_AntiStokes=None, data_Stokes=None, *,
+                     fit_model: 'Data.AnalysisResults.FitModel' = None):
             """
             Adds data for the analysis results for AntiStokes and Stokes peaks to the file.
             
@@ -419,6 +428,8 @@ class Data:
                         - 'R2': The R-squared value.
                         - 'RMSE': The root mean square error value.
                         - 'Cov_matrix': The covariance matrix.
+                    The above arrays must have one less dimension than the PSD dataset, with the same shape as the first n-1 dimensions of the PSD (i.e. all the dimensions except the last (spectral) one).
+                    The 'Cov_matrix' should have 2 additional last dimensions which define the matrix.
                 data_Stokes (dict or list[dict]): same as `data_AntiStokes` for the Stokes peaks.
                 fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
 
@@ -429,7 +440,13 @@ class Data:
             ar_group = sync(self._file.open_group(self._path))
 
             def add_quantity(qt: Data.AnalysisResults.Quantity, pt: Data.AnalysisResults.PeakType, data, index: int = 0):
-                # TODO: check if the data is valid
+                # PSD_nonspectral_shape is an closure variable that is used to check the shape of the data being added, if the PSD dataset is already present in the current data group.
+                if PSD_nonspectral_shape is not None:
+                    expected_shape = PSD_nonspectral_shape
+                    if qt is Data.AnalysisResults.Quantity.Cov_matrix:
+                        expected_shape += (data.shape[-2], data.shape[-1])
+                    if data.shape != expected_shape:
+                        raise ValueError(f"The shape of the '{qt.value}' data is {data.shape}, but it should be {expected_shape} to match the shape of the PSD.")
                 sync(self._file.create_dataset(
                     ar_group, ar_cls._get_quantity_name(qt, pt, index), data))
 
@@ -474,6 +491,14 @@ class Data:
                     if 'Cov_matrix_units' in data:
                         self._set_units(
                             data['Cov_matrix_units'], ar_cls.Quantity.Cov_matrix, pt, index)
+
+            PSD_nonspectral_shape = None
+            try:
+                PSD = self._file.open_dataset(concatenate_paths(
+                    self._data_group_path, brim_obj_names.data.PSD))
+                PSD_nonspectral_shape = PSD.shape[:-1]
+            except Exception as e:
+                warnings.warn("It is recommended to add the PSD dataset before adding the analysis results, to ensure the correct shape of the analysis results data.")
 
             if data_AntiStokes is not None:
                 data_AntiStokes = var_to_singleton(data_AntiStokes)
@@ -859,42 +884,8 @@ class Data:
             return (pars, pars_names)
         return (None, None)
 
-    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
-        """
-        Adds a new AnalysisResults entry to the current data group.
-        Parameters:
-            data_AntiStokes (dict or list[dict]): contains the same elements as the ones in `AnalysisResults.add_data`,
-                but all the quantities (i.d. 'shift', 'width', etc.) are 3D, corresponding to the spatial positions (z, y, x).
-            data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
-            index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
-            name (str, optional): The name for the new Analysis group. Defaults to None.
-            fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
-        Returns:
-            AnalysisResults: The newly created AnalysisResults object.
-        Raises:
-            IndexError: If the specified index already exists in the dataset.
-            ValueError: If any of the data provided is not valid or consistent
-        """
-        def flatten_data(data: dict):
-            if data is None:
-                return None
-            data = var_to_singleton(data)
-            out_data = []
-            for dn in data:
-                for k in dn.keys():
-                    if not k.endswith('_units'):
-                        d = dn[k]
-                        if d.ndim != 3 or d.shape != self._spatial_map.shape:
-                            raise ValueError(
-                                f"'{k}' must have 3 dimensions (z, y, x) and same shape as the spatial map ({self._spatial_map.shape})")
-                        dn[k] = np.reshape(d, -1)  # flatten the data
-                out_data.append(dn)
-            return out_data
-        data_AntiStokes = flatten_data(data_AntiStokes)
-        data_Stokes = flatten_data(data_Stokes)
-        return self.create_analysis_results_group_raw(data_AntiStokes, data_Stokes, index, name, fit_model=fit_model)
-
-    def create_analysis_results_group_raw(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
+    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, *,
+                                          index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
@@ -924,7 +915,7 @@ class Data:
             indices.sort()
             index = indices[-1] + 1 if indices else 0  # Next available index
 
-        ar = Data.AnalysisResults._create_new(self, index)
+        ar = Data.AnalysisResults._create_new(self, index=index, sparse=self._sparse)
         if name is not None:
             set_object_name(self._file, ar._path, name)
         ar.add_data(data_AntiStokes, data_Stokes, fit_model=fit_model)
@@ -983,9 +974,10 @@ class Data:
         if name is None:
             raise IndexError(f"Analysis {index} not found")
         path = concatenate_paths(self._path, name)
-        return Data.AnalysisResults(self._file, path, self._spatial_map, self._spatial_map_px_size)
+        return Data.AnalysisResults(self._file, path, data_group_path=self._path,
+                                    spatial_map=self._spatial_map, spatial_map_px_size=self._spatial_map_px_size, sparse=self._sparse)
 
-    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, freq_units='GHz',
+    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict, freq_units='GHz',
                   timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
         """
         Add data to the current data group.
@@ -998,7 +990,7 @@ class Data:
             PSD (np.ndarray): A 2D numpy array representing the Power Spectral Density (PSD) data. The last dimension contains the spectra.
             frequency (np.ndarray): A 1D or 2D numpy array representing the frequency data. 
                 It must be broadcastable to the shape of the PSD array.
-            scanning (dict): A dictionary containing scanning-related data. It might be omitted is Sparse == false
+            scanning (dict): A dictionary containing scanning-related data. It might be omitted if sparse == False
             It may include:
                 - 'Spatial_map' (optional): A dictionary containing (up to) 3 arrays (x, y, z) and a string (units)
                 - 'Cartesian_visualisation' (optional): A 3D numpy array containing the association between spatial position and spectra.
