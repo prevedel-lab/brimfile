@@ -380,6 +380,164 @@ class TestAnalysisResults:
         
         assert ar is not None
         f.close()
+    
+    def test_get_spectrum_and_all_quantities_in_image(self, simple_brim_file):
+        """Test getting spectrum and all quantities at a specific coordinate for non-sparse data."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord = (0, 0, 0)
+        spectrum, quantities = data.get_spectrum_and_all_quantities_in_image(ar, coord)
+        
+        # Check spectrum tuple structure
+        assert spectrum is not None
+        assert isinstance(spectrum, tuple)
+        assert len(spectrum) == 4
+        PSD, frequency, PSD_units, frequency_units = spectrum
+        
+        # Validate spectrum components
+        assert PSD is not None
+        assert frequency is not None
+        assert isinstance(PSD, np.ndarray)
+        assert isinstance(frequency, np.ndarray)
+        assert len(PSD) == len(frequency)
+        
+        # Check units
+        assert PSD_units is None or isinstance(PSD_units, str)
+        assert frequency_units is None or isinstance(frequency_units, str)
+        
+        # Check quantities dictionary
+        assert quantities is not None
+        assert isinstance(quantities, dict)
+        
+        # Quantities should contain the expected peak types as keys
+        for peak_name in quantities:
+            assert isinstance(peak_name, str)
+            # Each peak should have a dictionary of quantities
+            assert isinstance(quantities[peak_name], dict)
+            for quantity_name in quantities[peak_name]:
+                assert isinstance(quantity_name, str)
+        
+        f.close()
+    
+    def test_get_spectrum_and_all_quantities_in_image_sparse(self, simple_brim_file_sparse):
+        """Test getting spectrum and all quantities at a specific coordinate for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord = (0, 0, 0)
+        spectrum, quantities = data.get_spectrum_and_all_quantities_in_image(ar, coord)
+        
+        # Check spectrum tuple structure
+        assert spectrum is not None
+        assert isinstance(spectrum, tuple)
+        assert len(spectrum) == 4
+        PSD, frequency, PSD_units, frequency_units = spectrum
+        
+        # Validate spectrum components
+        assert PSD is not None
+        assert frequency is not None
+        assert isinstance(PSD, np.ndarray)
+        assert isinstance(frequency, np.ndarray)
+        assert len(PSD) == len(frequency)
+        
+        # Check units
+        assert PSD_units is None or isinstance(PSD_units, str)
+        assert frequency_units is None or isinstance(frequency_units, str)
+        
+        # Check quantities dictionary
+        assert quantities is not None
+        assert isinstance(quantities, dict)
+        
+        # Quantities should contain the expected peak types as keys
+        for peak_name in quantities:
+            assert isinstance(peak_name, str)
+            # Each peak should have a dictionary of quantities
+            assert isinstance(quantities[peak_name], dict)
+            for quantity_name in quantities[peak_name]:
+                assert isinstance(quantity_name, str)
+        
+        f.close()
+    
+    def test_spectrum_and_quantities_with_different_coordinates(self, simple_brim_file):
+        """Test that different coordinates return different spectra and quantities for non-sparse data."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord1 = (0, 0, 0)
+        coord2 = (1, 2, 3)
+        
+        spectrum1, quantities1 = data.get_spectrum_and_all_quantities_in_image(ar, coord1)
+        spectrum2, quantities2 = data.get_spectrum_and_all_quantities_in_image(ar, coord2)
+        
+        # Spectra should be different at different coordinates
+        PSD1, freq1, _, _ = spectrum1
+        PSD2, freq2, _, _ = spectrum2
+        
+        # Frequencies should be the same
+        np.testing.assert_array_equal(freq1, freq2)
+        
+        # PSDs should be different (with high probability for generated test data)
+        assert not np.allclose(PSD1, PSD2)
+        
+        f.close()
+    
+    def test_spectrum_and_quantities_with_different_coordinates_sparse(self, simple_brim_file_sparse):
+        """Test that different coordinates return different spectra and quantities for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord1 = (0, 0, 0)
+        coord2 = (0, 1, 0)
+        
+        spectrum1, quantities1 = data.get_spectrum_and_all_quantities_in_image(ar, coord1)
+        spectrum2, quantities2 = data.get_spectrum_and_all_quantities_in_image(ar, coord2)
+        
+        # Spectra should be different at different coordinates
+        PSD1, freq1, _, _ = spectrum1
+        PSD2, freq2, _, _ = spectrum2
+        
+        # Frequencies should be the same
+        np.testing.assert_array_equal(freq1, freq2)
+        
+        # PSDs should be different (with high probability for generated test data)
+        assert not np.allclose(PSD1, PSD2)
+        
+        f.close()
+    
+    def test_spectrum_and_quantities_default_peak_index(self, simple_brim_file):
+        """Test getting spectrum and quantities with default peak index (0)."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord = (0, 0, 0)
+        spectrum, quantities = data.get_spectrum_and_all_quantities_in_image(ar, coord)
+        
+        # Should work without specifying index_peak (defaults to 0)
+        assert spectrum is not None
+        assert quantities is not None
+        
+        f.close()
+    
+    def test_spectrum_and_quantities_explicit_peak_index(self, simple_brim_file):
+        """Test getting spectrum and quantities with explicit peak index."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        coord = (0, 0, 0)
+        # Explicitly pass index_peak=0
+        spectrum, quantities = data.get_spectrum_and_all_quantities_in_image(ar, coord, index_peak=0)
+        
+        assert spectrum is not None
+        assert quantities is not None
+        
+        f.close()
 
 
 class TestDataCreation:
@@ -516,4 +674,28 @@ class TestSparseDataConsistency:
         
         f_ns.close()
         f_s.close()
+    
+    def test_get_parameters_no_parameters(self, simple_brim_file):
+        """Test getting parameters when none exist."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        
+        pars, pars_names = data.get_parameters()
+        
+        # Parameters may or may not exist in test data
+        assert pars is None or isinstance(pars, np.ndarray)
+        assert pars_names is None or isinstance(pars_names, (list, np.ndarray))
+        f.close()
+    
+    def test_get_parameters_sparse(self, simple_brim_file_sparse):
+        """Test getting parameters for sparse data when none exist."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        
+        pars, pars_names = data.get_parameters()
+        
+        # Parameters may or may not exist in test data
+        assert pars is None or isinstance(pars, np.ndarray)
+        assert pars_names is None or isinstance(pars_names, (list, np.ndarray))
+        f.close()
 
