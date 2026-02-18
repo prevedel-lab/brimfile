@@ -51,9 +51,9 @@ The following code shows how to:
 - get the metadata.
 
 ```Python
-from brimfile import File, Data, Metadata
-Quantity = Data.AnalysisResults.Quantity
-PeakType = Data.AnalysisResults.PeakType
+from brimfile import File, Data, Metadata, AnalysisResults
+Quantity = AnalysisResults.Quantity
+PeakType = AnalysisResults.PeakType
 
 filename = 'path/to/your/file.brim.zarr' 
 f = File(filename)
@@ -165,7 +165,7 @@ metadata.all_to_dict()
 
 ### AnalysisResults
 
-The results of the analysis can be accessed through the `brimfile.data.Data.AnalysisResults` object, obtained by calling the `brimfile.data.Data.get_analysis_results` method on a previously retrieved `Data` object:
+The results of the analysis can be accessed through the `brimfile.analysis_results.AnalysisResults` object, obtained by calling the `brimfile.data.Data.get_analysis_results` method on a previously retrieved `Data` object:
 ``` Python
 analysis_results = data.get_analysis_results()
 ```
@@ -174,13 +174,11 @@ or create a new one by calling the `brimfile.data.Data.create_analysis_results_g
 analysis_results = data.create_analysis_results_group(shift, width,
     name='my_analysis_results')
 ```
-Alternatively, if the `data` object was created with the `brimfile.file.File.create_data_group_raw` method, 
-you can create the analysis results group by calling `brimfile.data.Data.create_analysis_results_group_raw`.
 
-`AnalysisResults` also exposes a method to retrieve the images of the analysis results (`brimfile.data.Data.AnalysisResults.get_image`):
+`AnalysisResults` also exposes a method to retrieve the images of the analysis results (`brimfile.analysis_results.AnalysisResults.get_image`):
 
 ``` Python
-ar_cls = Data.AnalysisResults
+ar_cls = AnalysisResults
 img, px_size = analysis_results.get_image(ar_cls.Quantity.Shift, ar_cls.PeakType.average)
 ```
 
@@ -193,8 +191,8 @@ To list all the data groups in a brim file, you can use the `brimfile.file.File.
 Once you have a `Data` object, you can list the analysis results in it by calling the `brimfile.data.Data.list_AnalysisResults` method.
 
 Once you have an `AnalysisResults` object, you can determine:
-- if the Stokes and/or anti-Stokes peaks are present by calling the `brimfile.data.Data.AnalysisResults.list_existing_peak_types` method;
-- the available quantities (e.g. shift, linewidth, etc...) in the analysis results by calling the `brimfile.data.Data.AnalysisResults.list_existing_quantities` method.
+- if the Stokes and/or anti-Stokes peaks are present by calling the `brimfile.analysis_results.AnalysisResults.list_existing_peak_types` method;
+- the available quantities (e.g. shift, linewidth, etc...) in the analysis results by calling the `brimfile.analysis_results.AnalysisResults.list_existing_quantities` method.
 
 ## Example code
 
@@ -266,7 +264,7 @@ Now we can use this function to create a brim file with a data group and some me
 ```
 and we can read it back:
 ``` Python
-    from brimfile import File, Data, Metadata
+    from brimfile import File, Data, Metadata, AnalysisResults
 
     filename = 'path/to/your/file.brim.zarr' 
 
@@ -307,13 +305,13 @@ and we can read it back:
     pt = ar.list_existing_peak_types()
     qt = ar.list_existing_quantities()
     # get the image of the shift quantity for the average of the Stokes and anti-Stokes peaks
-    img, px_size = ar.get_image(Data.AnalysisResults.Quantity.Shift, Data.AnalysisResults.PeakType.average)
+    img, px_size = ar.get_image(AnalysisResults.Quantity.Shift, AnalysisResults.PeakType.average)
     # get the units of the shift quantity
-    u = ar.get_units(Data.AnalysisResults.Quantity.Shift)
+    u = ar.get_units(AnalysisResults.Quantity.Shift)
 
     # get a quantity at a specific pixel (coord) in the image
     coord = (1,3,4)
-    qt_at_px = ar.get_quantity_at_pixel(coord, Data.AnalysisResults.Quantity.Shift, Data.AnalysisResults.PeakType.average)
+    qt_at_px = ar.get_quantity_at_pixel(coord, AnalysisResults.Quantity.Shift, AnalysisResults.PeakType.average)
     assert img[coord]==qt_at_px
     
     # get the spectrum in the image at a specific pixel (coord)
@@ -326,9 +324,9 @@ and we can read it back:
 
 ### OME-TIFF
 
-You can export a specific quantity in the analyzed data to OME-TIFF files using the `brimfile.data.Data.AnalysisResults.save_image_to_OMETiff` method on an instance `ar` of the `AnalysisResults` class.
+You can export a specific quantity in the analyzed data to OME-TIFF files using the `brimfile.analysis_results.AnalysisResults.save_image_to_OMETiff` method on an instance `ar` of the `AnalysisResults` class.
 ``` Python
-ar_cls = Data.AnalysisResults
+ar_cls = AnalysisResults
 ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filename='path/to/your/exported_tiff' )
 ```
 """
@@ -337,5 +335,6 @@ __version__ = "1.3.3"
 
 from .file import File
 from .data import Data
+from .analysis_results import AnalysisResults
 from .metadata import Metadata
 from .file_abstraction import StoreType
