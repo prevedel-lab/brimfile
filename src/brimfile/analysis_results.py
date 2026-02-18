@@ -408,7 +408,7 @@ class AnalysisResults:
         Returns:
             dict: A dictionary of Metadata.Item in the form `result[quantity.name][peak.name] = bls.Metadata.Item(value, units)`
         """
-        async def _get_existing_quantity_at_index_async(self,  pt: AnalysisResults.PeakType = AnalysisResults.PeakType.AntiStokes):
+        async def _get_existing_quantity_at_index_async(self,  index: int | tuple[int, int, int], pt: AnalysisResults.PeakType = AnalysisResults.PeakType.AntiStokes):
             as_cls = AnalysisResults
             qts_ls = ()
             dts_ls = ()
@@ -434,8 +434,8 @@ class AnalysisResults:
             value_ls = [Metadata.Item(ret_ls[i], ret_ls[n+i]) for i in range(n)]
             return qts_ls, value_ls
         antiStokes, stokes = await asyncio.gather(
-            _get_existing_quantity_at_index_async(self, AnalysisResults.PeakType.AntiStokes),
-            _get_existing_quantity_at_index_async(self, AnalysisResults.PeakType.Stokes)
+            _get_existing_quantity_at_index_async(self, index, AnalysisResults.PeakType.AntiStokes),
+            _get_existing_quantity_at_index_async(self, index, AnalysisResults.PeakType.Stokes)
         )
         res = {}
         # combine the results, including the average
