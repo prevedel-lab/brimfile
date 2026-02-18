@@ -14,6 +14,22 @@
             "env": {
                 "PYTHONASYNCIODEBUG": "1"
             }
-        }
+        },
+        {
+            "name": "pytest: Debug All Tests (trace)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/",
+                "-v",
+                "--import-mode=importlib"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONASYNCIODEBUG": "1"
+            }
+        },
     ]
 }

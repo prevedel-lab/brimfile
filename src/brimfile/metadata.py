@@ -168,7 +168,7 @@ class Metadata:
         # iterate over the metadata dictionary and add each attribute
         for key, value in metadata.items():
             if not isinstance(value, Metadata.Item):
-                warnings.warn(f"No units provided for {key}; None is assumed.")
+                # TODO: issue a warning if the specific metadata requires units and they are not provided
                 # if no units are provided, we assume None
                 value = Metadata.Item(value, None)            
             val = value.value

@@ -32,9 +32,9 @@ To quickly start reading an existing .brim file, the following code shows how to
 - get the metadata.
 
 ```Python
-from brimfile import File, Data, Metadata
-Quantity = Data.AnalysisResults.Quantity
-PeakType = Data.AnalysisResults.PeakType
+from brimfile import File, Data, Metadata, AnalysisResults
+Quantity = AnalysisResults.Quantity
+PeakType = AnalysisResults.PeakType
 
 filename = 'path/to/your/file.brim.zarr' 
 f = File(filename)

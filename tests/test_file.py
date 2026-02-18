@@ -116,6 +116,26 @@ class TestDataGroupOperations:
         )
         assert data is not None
         assert isinstance(data, brim.Data)
+
+        d = f.get_data()
+        pixel_size = brim.file_abstraction.sync(
+            f._file.get_attr(d._group, 'element_size'))
+        assert sample_data['pixel_size'] == tuple(pixel_size)
+
+        f.close()
+    
+    def test_create_sparse_data_group(self, empty_brim_file, sample_data_sparse):
+        """Test creating a new data group."""
+        f = brim.File(empty_brim_file, mode='r+')
+        data = f.create_data_group_sparse(
+            sample_data_sparse['PSD'],
+            sample_data_sparse['frequency'],
+            scanning=sample_data_sparse['scanning'],
+            name='new_data'
+        )
+        assert data is not None
+        assert isinstance(data, brim.Data)
+
         f.close()
     
     def test_create_multiple_data_groups(self, empty_brim_file, sample_data):

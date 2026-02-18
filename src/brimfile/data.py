@@ -2,17 +2,17 @@ import numpy as np
 import asyncio
 
 import warnings
-from enum import Enum
 
 from .file_abstraction import FileAbstraction, sync, _async_getitem, _gather_sync
 from .utils import concatenate_paths, list_objects_matching_pattern, get_object_name, set_object_name
-from .utils import var_to_singleton, np_array_to_smallest_int_type, _guess_chunks
+from .utils import np_array_to_smallest_int_type, _guess_chunks
 
 from .metadata import Metadata
 
 from numbers import Number
 
 from . import units
+from .analysis_results import AnalysisResults
 from .constants import brim_obj_names
 
 __docformat__ = "google"
@@ -22,20 +22,26 @@ class Data:
     """
     Represents a data group within the brim file.
     """
+    # make AnalysisResults available as an attribute of Data
+    AnalysisResults = AnalysisResults
 
-    def __init__(self, file: FileAbstraction, path: str):
+    def __init__(self, file: FileAbstraction, path: str, *, newly_created = False):
         """
         Initialize the Data object. This constructor should not be called directly.
 
         Args:
             file (File): The parent File object.
             path (str): The path to the data group within the file.
+            newly_created (bool): Whether this data group is being created as new.
+                            If True, the constructor will not attempt to load spatial mapping.
         """
         self._file = file
         self._path = path
         self._group = sync(file.open_group(path))
 
-        self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
+        self._sparse = self._load_sparse_flag()
+        # the _spatial_map is None for non sparse data but the _spatial_map_px_size should always be valid
+        self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping() if not newly_created else (None, None)
 
     def get_name(self):
         """
@@ -49,6 +55,25 @@ class Data:
         """
         return int(self._path.split('/')[-1].split('_')[-1])
 
+    def _load_sparse_flag(self) -> bool:
+        """
+        Load the 'Sparse' flag for the data group.
+
+        Returns:
+            bool: The value of the 'Sparse' flag, or False if the attribute is not found or invalid.
+        """
+        try:
+            sparse = sync(self._file.get_attr(self._group, 'Sparse'))
+            if isinstance(sparse, bool):
+                return sparse
+            else:
+                warnings.warn(
+                    f"Invalid value for 'Sparse' attribute in {self._path}. Expected a boolean, got {type(sparse)}. Defaulting to False.")
+                return False
+        except Exception:
+            # if the attribute is not found, return the default value False
+            return False
+
     def _load_spatial_mapping(self, load_in_memory: bool=True) -> tuple:
         """
         Load a spatial mapping in the same format as 'Cartesian visualisation',
@@ -58,6 +83,8 @@ class Data:
             load_in_memory (bool): Specify whether the map should be forced to load in memory or just opened as a dataset.
         Returns:
             The spatial map and the corresponding pixel size as a tuple of 3 Metadata.Item, both in the order z, y, x.
+            If the spatial mapping is not defined in the file, returns None for the spatial map.
+            The pixel size is read from the data group for non-sparse data.
         """
         cv = None
         px_size = 3*(Metadata.Item(value=1, units=None),)
@@ -163,6 +190,20 @@ class Data:
                     px_sz = 1
                     px_unit = None
                 px_size += (Metadata.Item(px_sz, px_unit),)
+        elif not self._sparse:
+            try:
+                px_sz = sync(self._file.get_attr(self._group, 'element_size'))
+                if len(px_sz) != 3:
+                    raise ValueError(
+                        "The 'element_size' attribute must be a tuple of 3 elements")
+                px_unit = None
+                try:
+                    px_unit = sync(units.of_attribute(self._file, self._group, 'element_size'))
+                except Exception:
+                    warnings.warn("Pixel size unit is not provided for non-sparse data.")
+                px_size = tuple(Metadata.Item(el, px_unit) for el in px_sz)
+            except Exception:
+                warnings.warn("Pixel size is not provided for non-sparse data.")
 
         return cv, px_size
 
@@ -180,6 +221,12 @@ class Data:
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
+        warnings.warn(
+            "Data.get_PSD is deprecated and will be removed in a future release. "
+            "Use Data.get_PSD_as_spatial_map instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         PSD, frequency = _gather_sync(
             self._file.open_dataset(concatenate_paths(
                 self._path, brim_obj_names.data.PSD)),
@@ -224,26 +271,29 @@ class Data:
         if frequency.ndim > 1:
             frequency = np.broadcast_to(frequency, PSD.shape)
         
-        sm = np.array(self._spatial_map)
-        # reshape the PSD to have the spatial dimensions first      
-        PSD = PSD[sm, ...]
-        # reshape the frequency pnly if it is not the same for all spectra
-        if frequency.ndim > 1:
-            frequency = frequency[sm, ...]
+        if self._sparse:
+            if self._spatial_map is None:
+                raise ValueError("The data is defined as sparse, but no spatial mapping is provided.")
+            sm = np.array(self._spatial_map)
+            # reshape the PSD to have the spatial dimensions first      
+            PSD = PSD[sm, ...]
+            # reshape the frequency only if it is not the same for all spectra
+            if frequency.ndim > 1:
+                frequency = frequency[sm, ...]
 
         return PSD, frequency, PSD_units, frequency_units
 
-    def get_spectrum(self, index: int) -> tuple:
+    def _get_spectrum(self, index: int | tuple[int, int, int]) -> tuple:
         """
-        Synchronous wrapper for `get_spectrum_async` (see doc for `brimfile.data.Data.get_spectrum_async`)
+        Synchronous wrapper for `_get_spectrum_async` (see doc for `brimfile.data.Data._get_spectrum_async`)
         """
-        return sync(self.get_spectrum_async(index))
-    async def get_spectrum_async(self, index: int) -> tuple:
+        return sync(self._get_spectrum_async(index))
+    async def _get_spectrum_async(self, index: int | tuple[int, int, int]) -> tuple:
         """
-        Retrieve a spectrum from the data group.
+        Retrieve a spectrum from the data group by its index or coordinates.
 
         Args:
-            index (int): The index of the spectrum to retrieve.
+            index (int | tuple[int, int, int]): The index (for sparse data) or z, y, x coordinates (for non-sparse data) of the spectrum to retrieve.
 
         Returns:
             tuple: (PSD, frequency, PSD_units, frequency_units) for the specified index. 
@@ -252,8 +302,15 @@ class Data:
         Raises:
             IndexError: If the index is out of range for the PSD dataset.
         """
+        if self._sparse and not isinstance(index, int):
+            raise ValueError("For sparse data, index must be an integer.")
+        elif not self._sparse and not (isinstance(index, tuple) and len(index) == 3):
+            raise ValueError("For non-sparse data, index must be a tuple of (z, y, x) coordinates.")
+            
         # index = -1 corresponds to no spectrum
-        if index < 0:
+        if self._sparse and index < 0:
+            return None, None, None, None
+        elif not self._sparse and any(i < 0 for i in index):
             return None, None, None, None
         PSD, frequency = await asyncio.gather(
             self._file.open_dataset(concatenate_paths(
@@ -261,24 +318,41 @@ class Data:
             self._file.open_dataset(concatenate_paths(
                 self._path, brim_obj_names.data.frequency))
             )
-        if index >= PSD.shape[0]:
+        if self._sparse and index >= PSD.shape[0]:
             raise IndexError(
-                f"index {index} out of range for PSD with shape {PSD.shape}") 
+                f"index {index} out of range for PSD with shape {PSD.shape}")
+        elif not self._sparse and any(i >= PSD.shape[j] for j, i in enumerate(index)):
+            raise IndexError(
+                f"index {index} out of range for PSD with shape {PSD.shape}")
         # retrieve the units of the PSD and frequency
         PSD_units, frequency_units = await asyncio.gather(
             units.of_object(self._file, PSD),
             units.of_object(self._file, frequency)
         )
+        # add ellipsis to the index to select the spectrum and the corresponding frequency
+        if self._sparse:
+            index = (index, ...)
+        else:
+            index = index + (..., )
         # map index to the frequency array, considering the broadcasting rules
-        index_frequency = (index, ...)
+        index_frequency = index
         if frequency.ndim < PSD.ndim:
-            # given the definition of the brim file format,
-            # if the frequency has less dimensions that PSD,
-            # it can only be because it is the same for all the spatial position (first dimension)
-            index_frequency = (..., )
+            if self._sparse:
+                # given the definition of the brim file format,
+                # if the frequency has less dimensions that PSD,
+                # it can only be because it is the same for all the spatial position (first dimension)
+                index_frequency = (..., )
+            else:
+                unassigned_indices = PSD.ndim - frequency.ndim
+                if unassigned_indices == 3:
+                    # if the frequency has no spatial dimension, it is the same for all the spatial positions
+                    index_frequency = (..., )
+                else:
+                    # if the frequency has some spatial dimensions but not all, we need to add the corresponding indices to the index of the frequency
+                    index_frequency = index[-unassigned_indices:] + (..., )
         #get the spectrum and the corresponding frequency at the specified index
         PSD, frequency = await asyncio.gather(
-            _async_getitem(PSD, (index,...)),
+            _async_getitem(PSD, index),
             _async_getitem(frequency, index_frequency)
         )
         #broadcast the frequency to match the shape of PSD if needed
@@ -294,515 +368,41 @@ class Data:
             coor (tuple): A tuple containing the z, y, x coordinates of the spectrum to retrieve.
 
         Returns:
-            tuple: A tuple containing the PSD, frequency, PSD_units, frequency_units for the specified coordinates. See "get_spectrum" for details.
+            tuple: A tuple containing the PSD, frequency, PSD_units, frequency_units for the specified coordinates. See `Data._get_spectrum_async` for details.
         """
         if len(coor) != 3:
             raise ValueError("coor must contain 3 values for z, y, x")
 
-        index = int(self._spatial_map[coor])
-        return self.get_spectrum(index)    
+        if self._sparse:
+            index = int(self._spatial_map[coor])
+            return self._get_spectrum(index)
+        else:
+            return self._get_spectrum(coor)
           
     def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0):
         """
-            Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
-            TODO complete the documentation
+        Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
+
+        Args:
+            ar (Data.AnalysisResults): The analysis results object to retrieve quantities from.
+            coor (tuple): A tuple containing the z, y, x coordinates in the image.
+            index_peak (int, optional): The index of the peak to retrieve (for multi-peak fits). Defaults to 0.
+
+        Returns:
+            tuple: A tuple containing:
+                - spectrum (tuple): (PSD, frequency, PSD_units, frequency_units) at the specified coordinate
+                - quantities (dict): Dictionary of Metadata.Item in the form result[quantity.name][peak.name]
         """
         if len(coor) != 3:
             raise ValueError("coor must contain 3 values for z, y, x")
-        index = int(self._spatial_map[coor])
+        index = coor
+        if self._sparse:
+            index = int(self._spatial_map[coor])
         spectrum, quantities = _gather_sync(
-            self.get_spectrum_async(index),
+            self._get_spectrum_async(index),
             ar._get_all_quantities_at_index(index, index_peak)
         )
         return spectrum, quantities
-
-    class AnalysisResults:
-        """
-        Rapresents the analysis results associated with a Data object.
-        """
-
-        class Quantity(Enum):
-            """
-            Enum representing the type of analysis results.
-            """
-            Shift = "Shift"
-            Width = "Width"
-            Amplitude = "Amplitude"
-            Offset = "Offset"
-            R2 = "R2"
-            RMSE = "RMSE"
-            Cov_matrix = "Cov_matrix"
-
-        class PeakType(Enum):
-            AntiStokes = "AS"
-            Stokes = "S"
-            average = "avg"
-        
-        class FitModel(Enum):
-            Undefined = "Undefined"
-            Lorentzian = "Lorentzian"
-            DHO = "DHO"
-            Gaussian = "Gaussian"
-            Voigt = "Voigt"
-            Custom = "Custom"
-
-        def __init__(self, file: FileAbstraction, full_path: str, spatial_map, spatial_map_px_size):
-            """
-            Initialize the AnalysisResults object.
-
-            Args:
-                file (File): The parent File object.
-                full_path (str): path of the group storing the analysis results
-            """
-            self._file = file
-            self._path = full_path
-            # self._group = file.open_group(full_path)
-            self._spatial_map = spatial_map
-            self._spatial_map_px_size = spatial_map_px_size
-
-        def get_name(self):
-            """
-            Returns the name of the Analysis group.
-            """
-            return sync(get_object_name(self._file, self._path))
-
-        @classmethod
-        def _create_new(cls, data: 'Data', index: int) -> 'Data.AnalysisResults':
-            """
-            Create a new AnalysisResults group.
-
-            Args:
-                file (FileAbstraction): The file.
-                index (int): The index for the new AnalysisResults group.
-
-            Returns:
-                AnalysisResults: The newly created AnalysisResults object.
-            """
-            group_name = f"{brim_obj_names.data.analysis_results}_{index}"
-            ar_full_path = concatenate_paths(data._path, group_name)
-            group = sync(data._file.create_group(ar_full_path))
-            return cls(data._file, ar_full_path, data._spatial_map, data._spatial_map_px_size)
-
-        def add_data(self, data_AntiStokes=None, data_Stokes=None, fit_model: 'Data.AnalysisResults.FitModel' = None):
-            """
-            Adds data for the analysis results for AntiStokes and Stokes peaks to the file.
-            
-            Args:
-                data_AntiStokes (dict or list[dict]): A dictionary containing the analysis results for AntiStokes peaks.
-                    In case multiple peaks were fitted, it might be a list of dictionaries with each element corresponding to a single peak.
-                
-                    Each dictionary may include the following keys (plus the corresponding units,  e.g. 'shift_units'):
-                        - 'shift': The shift value.
-                        - 'width': The width value.
-                        - 'amplitude': The amplitude value.
-                        - 'offset': The offset value.
-                        - 'R2': The R-squared value.
-                        - 'RMSE': The root mean square error value.
-                        - 'Cov_matrix': The covariance matrix.
-                data_Stokes (dict or list[dict]): same as `data_AntiStokes` for the Stokes peaks.
-                fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
-
-                Both `data_AntiStokes` and `data_Stokes` are optional, but at least one of them must be provided.
-            """
-
-            ar_cls = Data.AnalysisResults
-            ar_group = sync(self._file.open_group(self._path))
-
-            def add_quantity(qt: Data.AnalysisResults.Quantity, pt: Data.AnalysisResults.PeakType, data, index: int = 0):
-                # TODO: check if the data is valid
-                sync(self._file.create_dataset(
-                    ar_group, ar_cls._get_quantity_name(qt, pt, index), data))
-
-            def add_data_pt(pt: Data.AnalysisResults.PeakType, data, index: int = 0):
-                if 'shift' in data:
-                    add_quantity(ar_cls.Quantity.Shift,
-                                 pt, data['shift'], index)
-                    if 'shift_units' in data:
-                        self._set_units(data['shift_units'],
-                                        ar_cls.Quantity.Shift, pt, index)
-                if 'width' in data:
-                    add_quantity(ar_cls.Quantity.Width,
-                                 pt, data['width'], index)
-                    if 'width_units' in data:
-                        self._set_units(data['width_units'],
-                                        ar_cls.Quantity.Width, pt, index)
-                if 'amplitude' in data:
-                    add_quantity(ar_cls.Quantity.Amplitude,
-                                 pt, data['amplitude'], index)
-                    if 'amplitude_units' in data:
-                        self._set_units(
-                            data['amplitude_units'], ar_cls.Quantity.Amplitude, pt, index)
-                if 'offset' in data:
-                    add_quantity(ar_cls.Quantity.Offset,
-                                 pt, data['offset'], index)
-                    if 'offset_units' in data:
-                        self._set_units(
-                            data['offset_units'], ar_cls.Quantity.Offset, pt, index)
-                if 'R2' in data:
-                    add_quantity(ar_cls.Quantity.R2, pt, data['R2'], index)
-                    if 'R2_units' in data:
-                        self._set_units(data['R2_units'],
-                                        ar_cls.Quantity.R2, pt, index)
-                if 'RMSE' in data:
-                    add_quantity(ar_cls.Quantity.RMSE, pt, data['RMSE'], index)
-                    if 'RMSE_units' in data:
-                        self._set_units(data['RMSE_units'],
-                                        ar_cls.Quantity.RMSE, pt, index)
-                if 'Cov_matrix' in data:
-                    add_quantity(ar_cls.Quantity.Cov_matrix,
-                                 pt, data['Cov_matrix'], index)
-                    if 'Cov_matrix_units' in data:
-                        self._set_units(
-                            data['Cov_matrix_units'], ar_cls.Quantity.Cov_matrix, pt, index)
-
-            if data_AntiStokes is not None:
-                data_AntiStokes = var_to_singleton(data_AntiStokes)
-                for i, d_as in enumerate(data_AntiStokes):
-                    add_data_pt(ar_cls.PeakType.AntiStokes, d_as, i)
-            if data_Stokes is not None:
-                data_Stokes = var_to_singleton(data_Stokes)
-                for i, d_s in enumerate(data_Stokes):
-                    add_data_pt(ar_cls.PeakType.Stokes, d_s, i)
-            if fit_model is not None:
-                sync(self._file.create_attr(ar_group, 'Fit_model', fit_model.value))
-
-        def get_units(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str:
-            """
-            Retrieve the units of a specified quantity from the data file.
-
-            Args:
-                qt (Quantity): The quantity for which the units are to be retrieved.
-                pt (PeakType, optional): The type of peak (e.g., Stokes or AntiStokes). Defaults to PeakType.AntiStokes.
-                index (int, optional): The index of the quantity in case multiple quantities exist. Defaults to 0.
-
-            Returns:
-                str: The units of the specified quantity as a string.
-            """
-            dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
-            full_path = concatenate_paths(self._path, dt_name)
-            return sync(units.of_object(self._file, full_path))
-
-        def _set_units(self, un: str, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str:
-            """
-            Set the units of a specified quantity.
-
-            Args:
-                un (str): The units to be set.
-                qt (Quantity): The quantity for which the units are to be set.
-                pt (PeakType, optional): The type of peak (e.g., Stokes or AntiStokes). Defaults to PeakType.AntiStokes.
-                index (int, optional): The index of the quantity in case multiple quantities exist. Defaults to 0.
-
-            Returns:
-                str: The units of the specified quantity as a string.
-            """
-            dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
-            full_path = concatenate_paths(self._path, dt_name)
-            return units.add_to_object(self._file, full_path, un)
-        
-        @property
-        def fit_model(self) -> 'Data.AnalysisResults.FitModel':
-            """
-            Retrieve the fit model used for the analysis.
-
-            Returns:
-                Data.AnalysisResults.FitModel: The fit model used for the analysis.
-            """
-            if not hasattr(self, '_fit_model'):
-                try:
-                    fit_model_str = sync(self._file.get_attr(self._path, 'Fit_model'))
-                    self._fit_model = Data.AnalysisResults.FitModel(fit_model_str)
-                except Exception as e:
-                    if isinstance(e, ValueError):
-                        warnings.warn(
-                            f"Unknown fit model '{fit_model_str}' found in the file.")
-                    self._fit_model = Data.AnalysisResults.FitModel.Undefined        
-            return self._fit_model
-
-        def save_image_to_OMETiff(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0, filename: str = None) -> str:
-            """
-            Saves the image corresponding to the specified quantity and index to an OMETiff file.
-
-            Args:
-                qt (Quantity): The quantity to retrieve the image for (e.g. shift).
-                pt (PeakType, optional): The type of peak to consider (default is PeakType.AntiStokes).
-                index (int, optional): The index of the data to retrieve, if multiple are present (default is 0).
-                filename (str, optional): The name of the file to save the image to. If None, a default name will be used.
-
-            Returns:
-                str: The path to the saved OMETiff file.
-            """
-            try:
-                import tifffile
-            except ImportError:
-                raise ModuleNotFoundError(
-                    "The tifffile module is required for saving to OME-Tiff. Please install it using 'pip install tifffile'.")
-            
-            if filename is None:
-                filename = f"{qt.value}_{pt.value}_{index}.ome.tif"
-            if not filename.endswith('.ome.tif'):
-                filename += '.ome.tif'
-            img, px_size = self.get_image(qt, pt, index)
-            if img.ndim > 3:
-                raise NotImplementedError(
-                    "Saving images with more than 3 dimensions is not supported yet.")
-            with tifffile.TiffWriter(filename, bigtiff=True) as tif:
-                metadata = {
-                    'axes': 'ZYX',
-                    'PhysicalSizeX': px_size[2].value,
-                    'PhysicalSizeXUnit': px_size[2].units,
-                    'PhysicalSizeY': px_size[1].value,
-                    'PhysicalSizeYUnit': px_size[1].units,
-                    'PhysicalSizeZ': px_size[0].value,
-                    'PhysicalSizeZUnit': px_size[0].units,
-                }
-                tif.write(img, metadata=metadata)
-            return filename
-
-        def get_image(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
-            """
-            Retrieves an image (spatial map) based on the specified quantity, peak type, and index.
-
-            Args:
-                qt (Quantity): The quantity to retrieve the image for (e.g. shift).
-                pt (PeakType, optional): The type of peak to consider (default is PeakType.AntiStokes).
-                index (int, optional): The index of the data to retrieve, if multiple are present (default is 0).
-
-            Returns:
-                A tuple containing the image corresponding to the specified quantity and index and the corresponding pixel size.
-                The image is a 3D dataset where the dimensions are z, y, x.
-                If there are additional parameters, more dimensions are added in the order z, y, x, par1, par2, ...
-                The pixel size is a tuple of 3 Metadata.Item in the order z, y, x.
-            """
-            pt_type = Data.AnalysisResults.PeakType
-            data = None
-            if pt == pt_type.average:
-                peaks = self.list_existing_peak_types(index)
-                match len(peaks):
-                    case 0:
-                        raise ValueError(
-                            "No peaks found for the specified index. Cannot compute average.")
-                    case 1:
-                        data = np.array(sync(self._get_quantity(qt, peaks[0], index)))
-                    case 2:
-                        data1, data2 = _gather_sync(
-                            self._get_quantity(qt, peaks[0], index),
-                            self._get_quantity(qt, peaks[1], index)
-                            )
-                        data = (np.abs(data1) + np.abs(data2))/2
-            else:
-                data = np.array(sync(self._get_quantity(qt, pt, index)))
-            sm = np.array(self._spatial_map)
-            img = data[sm, ...]
-            img[sm<0, ...] = np.nan  # set invalid pixels to NaN
-            return img, self._spatial_map_px_size
-        def get_quantity_at_pixel(self, coord: tuple, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
-            """
-            Synchronous wrapper for `get_quantity_at_pixel_async` (see doc for `brimfile.data.Data.AnalysisResults.get_quantity_at_pixel_async`)
-            """
-            return sync(self.get_quantity_at_pixel_async(coord, qt, pt, index))
-        async def get_quantity_at_pixel_async(self, coord: tuple, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
-            """
-            Retrieves the specified quantity in the image at coord, based on the peak type and index.
-
-            Args:
-                coord (tuple): A tuple of 3 elements corresponding to the z, y, x coordinate in the image
-                qt (Quantity): The quantity to retrieve the image for (e.g. shift).
-                pt (PeakType, optional): The type of peak to consider (default is PeakType.AntiStokes).
-                index (int, optional): The index of the data to retrieve, if multiple peaks are present (default is 0).
-
-            Returns:
-                The requested quantity, which is a scalar or a multidimensional array (depending on whether there are additional parameters in the current Data group)
-            """
-            if len(coord) != 3:
-                raise ValueError(
-                    "'coord' must have 3 elements corresponding to z, y, x")
-            i = self._spatial_map[*coord]
-            assert i.size == 1
-            if i<0:
-                return np.nan  # invalid pixel
-            i = int(i)
-
-            pt_type = Data.AnalysisResults.PeakType
-            value = None
-            if pt == pt_type.average:
-                value = None
-                peaks = await self.list_existing_peak_types_async(index)
-                match len(peaks):
-                    case 0:
-                        raise ValueError(
-                            "No peaks found for the specified index. Cannot compute average.")
-                    case 1:
-                        data = await self._get_quantity(qt, peaks[0], index)
-                        value = await _async_getitem(data, (i, ...))
-                    case 2:
-                        data_p0, data_p1 = await asyncio.gather(
-                            self._get_quantity(qt, peaks[0], index),
-                            self._get_quantity(qt, peaks[1], index)
-                        )
-                        value1, value2 = await asyncio.gather(
-                            _async_getitem(data_p0, (i, ...)),
-                            _async_getitem(data_p1, (i, ...))
-                        )
-                        value = (np.abs(value1) + np.abs(value2))/2
-            else:
-                data = await self._get_quantity(qt, pt, index)
-                value = await _async_getitem(data, (i, ...))
-            return value
-        def get_all_quantities_in_image(self, coor: tuple, index_peak: int = 0) -> dict:
-            """
-            Retrieve all available quantities at a specific spatial coordinate.
-            see `brimfile.data.Data.AnalysisResults._get_all_quantities_at_index` for more details
-            TODO complete the documentation
-            """
-            if len(coor) != 3:
-                raise ValueError("coor must contain 3 values for z, y, x")
-            index = int(self._spatial_map[coor])
-            return sync(self._get_all_quantities_at_index(index, index_peak))
-        async def _get_all_quantities_at_index(self, index: int, index_peak: int = 0) -> dict:
-            """
-            Retrieve all available quantities for a specific spatial index.
-            Args:
-                index (int): The spatial index to retrieve quantities for.
-                index_peak (int, optional): The index of the data to retrieve, if multiple peaks are present (default is 0).
-            Returns:
-                dict: A dictionary of Metadata.Item in the form `result[quantity.name][peak.name] = bls.Metadata.Item(value, units)`
-            """
-            async def _get_existing_quantity_at_index_async(self,  pt: Data.AnalysisResults.PeakType = Data.AnalysisResults.PeakType.AntiStokes):
-                as_cls = Data.AnalysisResults
-                qts_ls = ()
-                dts_ls = ()
-
-                qts = [qt for qt in as_cls.Quantity]
-                coros = [self._file.open_dataset(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index_peak))) for qt in qts]
-                
-                # open the datasets asynchronously, excluding those that do not exist
-                opened_dts = await asyncio.gather(*coros, return_exceptions=True)
-                for i, opened_qt in enumerate(opened_dts):
-                    if not isinstance(opened_qt, Exception):
-                        qts_ls += (qts[i],)
-                        dts_ls += (opened_dts[i],)
-                # get the values at the specified index
-                coros_values = [_async_getitem(dt, (index, ...)) for dt in dts_ls]
-                coros_units = [units.of_object(self._file, dt) for dt in dts_ls]
-                ret_ls = await asyncio.gather(*coros_values, *coros_units)
-                n = len(coros_values)
-                value_ls = [Metadata.Item(ret_ls[i], ret_ls[n+i]) for i in range(n)]
-                return qts_ls, value_ls
-            antiStokes, stokes = await asyncio.gather(
-                _get_existing_quantity_at_index_async(self, Data.AnalysisResults.PeakType.AntiStokes),
-                _get_existing_quantity_at_index_async(self, Data.AnalysisResults.PeakType.Stokes)
-            )
-            res = {}
-            # combine the results, including the average
-            for qt in (set(antiStokes[0]) | set(stokes[0])):
-                res[qt.name] = {}
-                pts = ()
-                #Stokes
-                if qt in stokes[0]:
-                    res[qt.name][Data.AnalysisResults.PeakType.Stokes.name] = stokes[1][stokes[0].index(qt)]
-                    pts += (Data.AnalysisResults.PeakType.Stokes,)
-                #AntiStokes
-                if qt in antiStokes[0]:
-                    res[qt.name][Data.AnalysisResults.PeakType.AntiStokes.name] = antiStokes[1][antiStokes[0].index(qt)]
-                    pts += (Data.AnalysisResults.PeakType.AntiStokes,)
-                #average getting the units of the first peak
-                res[qt.name][Data.AnalysisResults.PeakType.average.name] = Metadata.Item(
-                    np.mean([np.abs(res[qt.name][pt.name].value) for pt in pts]), 
-                    res[qt.name][pts[0].name].units
-                    )
-                if not all(res[qt.name][pt.name].units == res[qt.name][pts[0].name].units for pt in pts):
-                    warnings.warn(f"The units of {pts} are not consistent.")
-            return res
-
-        @classmethod
-        def _get_quantity_name(cls, qt: Quantity, pt: PeakType, index: int) -> str:
-            """
-            Returns the name of the dataset correponding to the specific Quantity, PeakType and index
-
-            Args:
-                qt (Quantity)   
-                pt (PeakType)  
-                intex (int): in case of multiple peaks fitted, the index of the peak to consider       
-            """
-            if not pt in (cls.PeakType.AntiStokes, cls.PeakType.Stokes):
-                raise ValueError("pt has to be either Stokes or AntiStokes")
-            if qt == cls.Quantity.R2 or qt == cls.Quantity.RMSE or qt == cls.Quantity.Cov_matrix:
-                name = f"Fit_error_{str(pt.value)}_{index}/{str(qt.value)}"
-            else:
-                name = f"{str(qt.value)}_{str(pt.value)}_{index}"
-            return name
-
-        async def _get_quantity(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0):
-            """
-            Retrieve a specific quantity dataset from the file.
-
-            Args:
-                qt (Quantity): The type of quantity to retrieve.
-                pt (PeakType, optional): The peak type to consider (default is PeakType.AntiStokes).
-                index (int, optional): The index of the quantity if multiple peaks are available (default is 0).
-
-            Returns:
-                The dataset corresponding to the specified quantity, as stored in the file.
-
-            """
-
-            dt_name = Data.AnalysisResults._get_quantity_name(qt, pt, index)
-            full_path = concatenate_paths(self._path, dt_name)
-            return await self._file.open_dataset(full_path)
-
-        def list_existing_peak_types(self, index: int = 0) -> tuple:
-            """
-            Synchronous wrapper for `list_existing_peak_types_async` (see doc for `brimfile.data.Data.AnalysisResults.list_existing_peak_types_async`)
-            """
-            return sync(self.list_existing_peak_types_async(index)) 
-        async def list_existing_peak_types_async(self, index: int = 0) -> tuple:
-            """
-            Returns a tuple of existing peak types (Stokes and/or AntiStokes) for the specified index.
-            Args:
-                index (int, optional): The index of the peak to check (in case of multi-peak fit). Defaults to 0.
-            Returns:
-                tuple: A tuple containing `PeakType` members (`Stokes`, `AntiStokes`) that exist for the given index.
-            """
-
-            as_cls = Data.AnalysisResults
-            shift_s_name = as_cls._get_quantity_name(
-                as_cls.Quantity.Shift, as_cls.PeakType.Stokes, index)
-            shift_as_name = as_cls._get_quantity_name(
-                as_cls.Quantity.Shift, as_cls.PeakType.AntiStokes, index)
-            ls = ()
-            coro_as_exists = self._file.object_exists(concatenate_paths(self._path, shift_as_name))
-            coro_s_exists = self._file.object_exists(concatenate_paths(self._path, shift_s_name))
-            as_exists, s_exists = await asyncio.gather(coro_as_exists, coro_s_exists)
-            if as_exists:
-                ls += (as_cls.PeakType.AntiStokes,)
-            if s_exists:
-                ls += (as_cls.PeakType.Stokes,)
-            return ls
-
-        def list_existing_quantities(self,  pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
-            """
-            Synchronous wrapper for `list_existing_quantities_async` (see doc for `brimfile.data.Data.AnalysisResults.list_existing_quantities_async`)
-            """
-            return sync(self.list_existing_quantities_async(pt, index))
-        async def list_existing_quantities_async(self,  pt: PeakType = PeakType.AntiStokes, index: int = 0) -> tuple:
-            """
-            Returns a tuple of existing quantities for the specified index.
-            Args:
-                index (int, optional): The index of the peak to check (in case of multi-peak fit). Defaults to 0.
-            Returns:
-                tuple: A tuple containing `Quantity` members that exist for the given index.
-            """
-            as_cls = Data.AnalysisResults
-            ls = ()
-
-            qts = [qt for qt in as_cls.Quantity]
-            coros = [self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index))) for qt in qts]
-            
-            qt_exists = await asyncio.gather(*coros)
-            for i, exists in enumerate(qt_exists):
-                if exists:
-                    ls += (qts[i],)
-            return ls
 
     def get_metadata(self):
         """
@@ -839,46 +439,12 @@ class Data:
             return (pars, pars_names)
         return (None, None)
 
-    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
+    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, *,
+                                          index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
-            data_AntiStokes (dict or list[dict]): contains the same elements as the ones in `AnalysisResults.add_data`,
-                but all the quantities (i.d. 'shift', 'width', etc.) are 3D, corresponding to the spatial positions (z, y, x).
-            data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
-            index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
-            name (str, optional): The name for the new Analysis group. Defaults to None.
-            fit_model (Data.AnalysisResults.FitModel, optional): The fit model used for the analysis. Defaults to None (no attribute is set).
-        Returns:
-            AnalysisResults: The newly created AnalysisResults object.
-        Raises:
-            IndexError: If the specified index already exists in the dataset.
-            ValueError: If any of the data provided is not valid or consistent
-        """
-        def flatten_data(data: dict):
-            if data is None:
-                return None
-            data = var_to_singleton(data)
-            out_data = []
-            for dn in data:
-                for k in dn.keys():
-                    if not k.endswith('_units'):
-                        d = dn[k]
-                        if d.ndim != 3 or d.shape != self._spatial_map.shape:
-                            raise ValueError(
-                                f"'{k}' must have 3 dimensions (z, y, x) and same shape as the spatial map ({self._spatial_map.shape})")
-                        dn[k] = np.reshape(d, -1)  # flatten the data
-                out_data.append(dn)
-            return out_data
-        data_AntiStokes = flatten_data(data_AntiStokes)
-        data_Stokes = flatten_data(data_Stokes)
-        return self.create_analysis_results_group_raw(data_AntiStokes, data_Stokes, index, name, fit_model=fit_model)
-
-    def create_analysis_results_group_raw(self, data_AntiStokes, data_Stokes=None, index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
-        """
-        Adds a new AnalysisResults entry to the current data group.
-        Parameters:
-            data_AntiStokes (dict or list[dict]): see documentation for AnalysisResults.add_data
+            data_AntiStokes (dict or list[dict]): see documentation for `brimfile.analysis_results.AnalysisResults.add_data`
             data_Stokes (dict or list[dict]): same as data_AntiStokes for the Stokes peaks.
             index (int, optional): The index for the new data entry. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new Analysis group. Defaults to None.
@@ -904,7 +470,7 @@ class Data:
             indices.sort()
             index = indices[-1] + 1 if indices else 0  # Next available index
 
-        ar = Data.AnalysisResults._create_new(self, index)
+        ar = Data.AnalysisResults._create_new(self, index=index, sparse=self._sparse)
         if name is not None:
             set_object_name(self._file, ar._path, name)
         ar.add_data(data_AntiStokes, data_Stokes, fit_model=fit_model)
@@ -963,9 +529,11 @@ class Data:
         if name is None:
             raise IndexError(f"Analysis {index} not found")
         path = concatenate_paths(self._path, name)
-        return Data.AnalysisResults(self._file, path, self._spatial_map, self._spatial_map_px_size)
+        return Data.AnalysisResults(self._file, path, data_group_path=self._path,
+                                    spatial_map=self._spatial_map, spatial_map_px_size=self._spatial_map_px_size, sparse=self._sparse)
 
-    def add_data(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, freq_units='GHz', timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
+    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict = None, freq_units='GHz',
+                  timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
         """
         Add data to the current data group.
 
@@ -977,15 +545,21 @@ class Data:
             PSD (np.ndarray): A 2D numpy array representing the Power Spectral Density (PSD) data. The last dimension contains the spectra.
             frequency (np.ndarray): A 1D or 2D numpy array representing the frequency data. 
                 It must be broadcastable to the shape of the PSD array.
-            scanning (dict): A dictionary containing scanning-related data. It may include:
-                - 'Spatial_map' (optional): A dictionary containing (up to) 3 arrays (x, y, z) and a string (units)
-                - 'Cartesian_visualisation' (optional): A 3D numpy array containing the association between spatial position and spectra.
-                   It must have integer values between 0 and PSD.shape[0]-1, or -1 for invalid entries.
-                - 'Cartesian_visualisation_pixel' (optional): A list or array of 3 float values 
-                  representing the pixel size in the z, y, and x dimensions (unused dimensions can be set to None).
-                - 'Cartesian_visualisation_pixel_unit' (optional): A string representing the unit of the pixel size (e.g. 'um').
-            timestamp (np.ndarray): the timestamp associated with each spectrum.
-                It must be a 1D array with the same length as the PSD array.
+            scanning (dict, optional): A dictionary containing scanning-related data. 
+                Required for sparse data (sparse=True), optional for non-sparse data.
+                For sparse data, must include at least one of 'Spatial_map' or 'Cartesian_visualisation'.
+                It may include the following keys:
+                - 'Spatial_map' (optional): A dictionary containing coordinate arrays:
+                    - 'x', 'y', 'z' (optional): 1D numpy arrays of same length with coordinate values
+                    - 'units' (optional): string with the unit (e.g., 'um')
+                - 'Cartesian_visualisation' (optional): A 3D numpy array (z, y, x) with integer values 
+                   mapping spatial positions to spectra indices. Values must be -1 (invalid/empty pixel) 
+                   or between 0 and PSD.shape[0]-1.
+                - 'Cartesian_visualisation_pixel' (recommended with Cartesian_visualisation): 
+                   Tuple/list of 3 float values (z, y, x) representing pixel size. Unused dimensions can be None.
+                - 'Cartesian_visualisation_pixel_unit' (optional): String for pixel size unit (default: 'um').
+            timestamp (np.ndarray, optional): Timestamps in milliseconds for each spectrum.
+                Must be a 1D array with length equal to PSD.shape[0].
 
 
         Raises:
@@ -998,46 +572,47 @@ class Data:
         except ValueError as e:
             raise ValueError(f"frequency (shape: {frequency.shape}) is not broadcastable to PSD (shape: {PSD.shape}): {e}")
 
-        # define the scanning_is_valid variable to check if at least one of 'Spatial_map' or 'Cartesian_visualisation'
-        # is present in the scanning dictionary
-        scanning_is_valid = False
-        if 'Spatial_map' in scanning:
-            sm = scanning['Spatial_map']
-            size = 0
+        # Check if at least one of 'Spatial_map' or 'Cartesian_visualisation' is present in the scanning dictionary
+        # This is required for sparse data to establish the spatial mapping
+        has_spatial_mapping = False
+        if scanning is not None:
+            if 'Spatial_map' in scanning:
+                sm = scanning['Spatial_map']
+                size = 0
 
-            def check_coor(coor: str):
-                if coor in sm:
-                    sm[coor] = np.array(sm[coor])
-                    size1 = sm[coor].size
-                    if size1 != size and size != 0:
-                        raise ValueError(
-                            f"'{coor}' in 'Spatial_map' is invalid!")
-                    return size1
-            size = check_coor('x')
-            size = check_coor('y')
-            size = check_coor('z')
-            if size == 0:
-                raise ValueError(
-                    "'Spatial_map' should contain at least one x, y or z")
-            scanning_is_valid = True
-        if 'Cartesian_visualisation' in scanning:
-            cv = scanning['Cartesian_visualisation']
-            if not isinstance(cv, np.ndarray) or cv.ndim != 3:
-                raise ValueError(
-                    "Cartesian_visualisation must be a 3D numpy array")
-            if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
-                raise ValueError(
-                    "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
-            if 'Cartesian_visualisation_pixel' in scanning:
-                if len(scanning['Cartesian_visualisation_pixel']) != 3:
+                def check_coor(coor: str):
+                    if coor in sm:
+                        sm[coor] = np.array(sm[coor])
+                        size1 = sm[coor].size
+                        if size1 != size and size != 0:
+                            raise ValueError(
+                                f"'{coor}' in 'Spatial_map' is invalid!")
+                        return size1
+                size = check_coor('x')
+                size = check_coor('y')
+                size = check_coor('z')
+                if size == 0:
                     raise ValueError(
-                        "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
-            else:
-                warnings.warn(
-                    "It is recommended to add 'Cartesian_visualisation_pixel' to the scanning dictionary, to define the pixel size")
-            scanning_is_valid = True
-        if not scanning_is_valid:
-            raise ValueError("scanning is not valid")
+                        "'Spatial_map' should contain at least one x, y or z")
+                has_spatial_mapping = True
+            if 'Cartesian_visualisation' in scanning:
+                cv = scanning['Cartesian_visualisation']
+                if not isinstance(cv, np.ndarray) or cv.ndim != 3:
+                    raise ValueError(
+                        "Cartesian_visualisation must be a 3D numpy array")
+                if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
+                    raise ValueError(
+                        "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
+                if 'Cartesian_visualisation_pixel' in scanning:
+                    if len(scanning['Cartesian_visualisation_pixel']) != 3:
+                        raise ValueError(
+                            "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
+                else:
+                    warnings.warn(
+                        "It is recommended to include 'Cartesian_visualisation_pixel' in the scanning dictionary to define pixel size for proper spatial calibration")
+                has_spatial_mapping = True
+        if not has_spatial_mapping and self._sparse:
+            raise ValueError("For sparse data, 'scanning' must be provided and must contain at least one of 'Spatial_map' or 'Cartesian_visualisation'")
 
         if timestamp is not None:
             if not isinstance(timestamp, np.ndarray) or timestamp.ndim != 1 or len(timestamp) != PSD.shape[0]:
@@ -1069,36 +644,37 @@ class Data:
             chunk_size=determine_chunk_size(frequency), compression=compression))
         units.add_to_object(self._file, freq_ds, freq_units)
 
-        if 'Spatial_map' in scanning:
-            sm = scanning['Spatial_map']
-            sm_group = sync(self._file.create_group(concatenate_paths(
-                self._path, brim_obj_names.data.spatial_map)))
-            if 'units' in sm:
-                units.add_to_object(self._file, sm_group, sm['units'])
+        if scanning is not None:
+            if 'Spatial_map' in scanning:
+                sm = scanning['Spatial_map']
+                sm_group = sync(self._file.create_group(concatenate_paths(
+                    self._path, brim_obj_names.data.spatial_map)))
+                if 'units' in sm:
+                    units.add_to_object(self._file, sm_group, sm['units'])
 
-            def add_sm_dataset(coord: str):
-                if coord in sm:
-                    coord_dts = sync(self._file.create_dataset(
-                        sm_group, coord, data=sm[coord], compression=compression))
+                def add_sm_dataset(coord: str):
+                    if coord in sm:
+                        coord_dts = sync(self._file.create_dataset(
+                            sm_group, coord, data=sm[coord], compression=compression))
 
-            add_sm_dataset('x')
-            add_sm_dataset('y')
-            add_sm_dataset('z')
-        if 'Cartesian_visualisation' in scanning:
-            # convert the Cartesian_visualisation to the smallest integer type
-            cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
-            cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
-                                           data=cv_arr, compression=compression))
-            if 'Cartesian_visualisation_pixel' in scanning:
-                sync(self._file.create_attr(
-                    cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
-                if 'Cartesian_visualisation_pixel_unit' in scanning:
-                    px_unit = scanning['Cartesian_visualisation_pixel_unit']
-                else:
-                    warnings.warn(
-                        "No unit provided for Cartesian_visualisation_pixel, defaulting to 'um'")
-                    px_unit = 'um'
-                units.add_to_attribute(self._file, cv, 'element_size', px_unit)
+                add_sm_dataset('x')
+                add_sm_dataset('y')
+                add_sm_dataset('z')
+            if 'Cartesian_visualisation' in scanning:
+                # convert the Cartesian_visualisation to the smallest integer type
+                cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
+                cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
+                                            data=cv_arr, compression=compression))
+                if 'Cartesian_visualisation_pixel' in scanning:
+                    sync(self._file.create_attr(
+                        cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
+                    if 'Cartesian_visualisation_pixel_unit' in scanning:
+                        px_unit = scanning['Cartesian_visualisation_pixel_unit']
+                    else:
+                        warnings.warn(
+                            "No unit provided for Cartesian_visualisation_pixel, defaulting to 'um'")
+                        px_unit = 'um'
+                    units.add_to_attribute(self._file, cv, 'element_size', px_unit)
 
         self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping()
 
@@ -1164,13 +740,14 @@ class Data:
         return group_name
 
     @classmethod
-    def _create_new(cls, file: FileAbstraction, index: int, name: str = None) -> 'Data':
+    def _create_new(cls, file: FileAbstraction, index: int, sparse: bool = False, name: str = None) -> 'Data':
         """
         Create a new data group with the specified index.
 
         Args:
             file (File): The parent File object.
             index (int): The index for the new data group.
+            sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             name (str, optional): The name for the new data group. Defaults to None.
 
         Returns:
@@ -1179,9 +756,10 @@ class Data:
         group_name = Data._generate_group_name(index)
         group = sync(file.create_group(concatenate_paths(
             brim_obj_names.Brillouin_base_path, group_name)))
+        sync(file.create_attr(group, 'Sparse', sparse))
         if name is not None:
             set_object_name(file, group, name)
-        return cls(file, concatenate_paths(brim_obj_names.Brillouin_base_path, group_name))
+        return cls(file, concatenate_paths(brim_obj_names.Brillouin_base_path, group_name), newly_created=True)
 
     @staticmethod
     def _generate_group_name(index: int, n_digits: int = None) -> str:

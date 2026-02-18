@@ -6,6 +6,7 @@ from .metadata import Metadata
 
 from .utils import concatenate_paths
 from .constants import brim_obj_names
+from . import units
 
 from .file_abstraction import FileAbstraction, StoreType, sync
 
@@ -46,7 +47,8 @@ class File:
             
     def __del__(self):
         try:
-            self.close()
+            if hasattr(self, '_file'):
+                self.close()
         except Exception as e:            
             # don't throw an error if the file cannot be closed
             warnings.warn(f"Cannot close the file: {e}")
@@ -91,12 +93,13 @@ class File:
 
         return f
 
-    def create_data_group(self, PSD: np.ndarray, frequency: np.ndarray, px_size_um: tuple, index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+    def create_data_group(self, PSD: np.ndarray, frequency: np.ndarray, px_size_um: tuple, *, index: int = None,
+                          name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
         Adds a new data entry to the file.
         Parameters:
             PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. It must be 4D with dimensions z, y, x, spectrum
-            frequency (np.ndarray): The frequency data corresponding to the PSD. It must be 4D or 1D (in which case the frequency axis is assumed the same for all the spatial coordinates)
+            frequency (np.ndarray): The frequency data corresponding to the PSD. It must be broadcastable to the PSD shape (the most common case is frequency being 1D, in which case the frequency axis is assumed the same for all the spatial coordinates)
             px_size_um (tuple): A tuple of 3 elements, in the order z,y,x, corresponding to the pixel size in um. Unused dimensions can be set to None.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new data group. Defaults to None.
@@ -110,32 +113,54 @@ class File:
         if PSD.ndim != 4:
             raise ValueError(
                 "'PSD' must have 4 dimensions (z, y, x, spectrum)")
-        if frequency.ndim != 1 and frequency.ndim != 4:
-            raise ValueError(
-                "'frequency' must have either 4 dimensions (z, y, x, spectrum) or 1 dimension (spectrum)")
+        try:
+            np.broadcast_shapes(tuple(frequency.shape), tuple(PSD.shape))
+        except ValueError as e:
+            raise ValueError(f"frequency (shape: {frequency.shape}) is not broadcastable to PSD (shape: {PSD.shape}): {e}")
         if len(px_size_um) != 3:
             raise ValueError("'px_size_um' must have 3 elements (z,y,x); unused dimensions can be set to nan")
 
-        PSD_flat = np.reshape(PSD, (-1, PSD.shape[3]))
-        if frequency.ndim == 4:
-            freq_flat = np.reshape(frequency, (-1, frequency.shape[3]))
-        else:
-            freq_flat = frequency
-        indices = np.arange(PSD_flat.shape[0])
-        cartesian_vis = np.reshape(indices, PSD.shape[0:3])
-        scanning = {'Cartesian_visualisation': cartesian_vis,
-                    'Cartesian_visualisation_pixel': px_size_um, 'Cartesian_visualisation_pixel_unit': 'um'}
+        return self._create_data_group_raw(PSD, frequency, scanning = None, sparse = False, px_size_um=px_size_um, 
+                                             index=index, name=name, compression=compression)
 
-        return self.create_data_group_raw(PSD_flat, freq_flat, scanning, index=index, name=name, compression=compression)
-
-    def create_data_group_raw(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, timestamp: np.ndarray = None, index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+    def create_data_group_sparse(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, *, timestamp: np.ndarray = None,
+                                index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
-        Adds a new data entry to the file. Check the documentation for `brimfile.data.Data.add_data` for more details on the parameters.
+        Adds a new [sparse data entry](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) to the file.
+        
+        Sparse data allows storage of spectra in a flattened format (first dimension is the spectrum index),
+        with spatial mapping provided separately. This is efficient for data with irregular sampling or missing pixels.
+        
+        Parameters:
+            PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. First dimension is spectrum index,
+                last dimension contains the spectral data. Shape: (n_spectra, ..., n_freq_points).
+            frequency (np.ndarray): The frequency data corresponding to the PSD. Must be broadcastable to the PSD array.
+            scanning (dict): Dictionary defining the spatial mapping. Must include at least 'Spatial_map' or 'Cartesian_visualisation'.
+                See `brimfile.data.Data._add_data` docstring for detailed structure of the scanning dictionary.
+            timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.
+            index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
+            name (str, optional): The name for the new data group. Defaults to None.
+            compression (FileAbstraction.Compression, optional): The compression method to use for the data. Defaults to FileAbstraction.Compression.DEFAULT.
+        Returns:
+            Data: The newly created Data object.
+        Raises:
+            IndexError: If the specified index already exists in the dataset.
+            ValueError: If any of the data provided is not valid or consistent
+        """
+        return self._create_data_group_raw(PSD, frequency, scanning=scanning, timestamp=timestamp, sparse=True, index=index, name=name, compression=compression)   
+    
+    def _create_data_group_raw(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict = None, px_size_um = None, timestamp: np.ndarray = None, sparse: bool = False,
+                                index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+        """
+        Adds a new data entry to the file. Check the documentation for `brimfile.data.Data._add_data` for more details on the parameters.
         Parameters:
             PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. The last dimension contains the spectra.
-            frequency (np.ndarray): The frequency data corresponding to the PSD.
-            scanning (dict): Metadata related to the scanning process. See Data.add_data for more details.
+            frequency (np.ndarray): The frequency data corresponding to the PSD. Must be broadcastable to the PSD array.
+            scanning (dict, optional): Spatial mapping metadata. Required for sparse=True, optional for sparse=False.
+                See `brimfile.data.Data._add_data` docstring for detailed structure.
+            px_size_um (tuple, optional): A tuple of 3 elements (z, y, x) for pixel size in μm. For non-sparse data only.
             timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.
+            sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new data group. Defaults to None.
             compression (FileAbstraction.Compression, optional): The compression method to use for the data. Defaults to FileAbstraction.Compression.DEFAULT.
@@ -155,8 +180,16 @@ class File:
             indices.sort()
             index = indices[-1] + 1 if indices else 0  # Next available index
 
-        d = Data._create_new(self._file, index, name)
-        d.add_data(PSD, frequency, scanning,
+        # create the data group
+        d = Data._create_new(self._file, index, sparse, name)
+        # add the pixel size as an attribute of the data group
+        if px_size_um is not None:
+            sync(self._file.create_attr(d._group, 'element_size', tuple(px_size_um)))
+            units.add_to_attribute(self._file, d._group, 'element_size', 'um')
+        elif not sparse:
+            warnings.warn("Pixel size is not provided for non-sparse data. It is recommended to provide it for proper spatial calibration and visualization.")
+        # add the data to the data group
+        d._add_data(PSD, frequency, scanning = scanning,
                    timestamp=timestamp, compression=compression)
         return d
 
