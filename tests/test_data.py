@@ -4,6 +4,7 @@ Unit tests for the Data class in brimfile.
 
 
 import numpy as np
+import pytest
 
 import brimfile as brim
 
@@ -20,9 +21,27 @@ class TestDataProperties:
         assert isinstance(name, str)
         f.close()
     
+    def test_get_name_sparse(self, simple_brim_file_sparse):
+        """Test getting the name of a sparse data group."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        name = data.get_name()
+        assert name is not None
+        assert isinstance(name, str)
+        f.close()
+    
     def test_get_index(self, simple_brim_file):
         """Test getting the index of a data group."""
         f = brim.File(simple_brim_file)
+        data = f.get_data()
+        index = data.get_index()
+        assert isinstance(index, int)
+        assert index >= 0
+        f.close()
+    
+    def test_get_index_sparse(self, simple_brim_file_sparse):
+        """Test getting the index of a sparse data group."""
+        f = brim.File(simple_brim_file_sparse)
         data = f.get_data()
         index = data.get_index()
         assert isinstance(index, int)
@@ -36,6 +55,28 @@ class TestDataProperties:
         n_pars = data.get_num_parameters()
         assert isinstance(n_pars, tuple)
         f.close()
+    
+    def test_get_num_parameters_sparse(self, simple_brim_file_sparse):
+        """Test getting the number of parameters for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        n_pars = data.get_num_parameters()
+        assert isinstance(n_pars, tuple)
+        f.close()
+    
+    def test_sparse_flag(self, simple_brim_file, simple_brim_file_sparse):
+        """Test that the sparse flag is properly set."""
+        # Non-sparse data
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        assert data._sparse == False
+        f.close()
+        
+        # Sparse data
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        assert data._sparse == True
+        f.close()
 
 
 class TestSpectrumRetrieval:
@@ -44,6 +85,21 @@ class TestSpectrumRetrieval:
     def test_get_spectrum_in_image(self, simple_brim_file):
         """Test getting spectrum at a specific pixel."""
         f = brim.File(simple_brim_file)
+        data = f.get_data()
+        
+        coord = (0, 0, 0)
+        PSD, frequency, PSD_units, frequency_units = data.get_spectrum_in_image(coord)
+        
+        assert PSD is not None
+        assert frequency is not None
+        assert isinstance(PSD, np.ndarray)
+        assert isinstance(frequency, np.ndarray)
+        assert len(PSD) == len(frequency)
+        f.close()
+    
+    def test_get_spectrum_in_image_sparse(self, simple_brim_file_sparse):
+        """Test getting spectrum at a specific pixel for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
         data = f.get_data()
         
         coord = (0, 0, 0)
@@ -69,6 +125,20 @@ class TestSpectrumRetrieval:
         
         f.close()
     
+    def test_get_spectrum_different_coordinates_sparse(self, simple_brim_file_sparse):
+        """Test getting spectra at different coordinates for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        
+        # For sparse data, we need to check valid coordinates
+        coords = [(0, 0, 0), (0, 1, 0), (0, 0, 1)]
+        for coord in coords:
+            PSD, frequency, _, _ = data.get_spectrum_in_image(coord)
+            assert PSD is not None
+            assert len(PSD) > 0
+        
+        f.close()
+    
     def test_spectrum_units(self, simple_brim_file):
         """Test that spectrum units are returned."""
         f = brim.File(simple_brim_file)
@@ -81,6 +151,83 @@ class TestSpectrumRetrieval:
         assert PSD_units is None or isinstance(PSD_units, str)
         assert frequency_units is None or isinstance(frequency_units, str)
         f.close()
+    
+    def test_spectrum_units_sparse(self, simple_brim_file_sparse):
+        """Test that spectrum units are returned for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        
+        coord = (0, 0, 0)
+        _, _, PSD_units, frequency_units = data.get_spectrum_in_image(coord)
+        
+        # Units should be strings or None
+        assert PSD_units is None or isinstance(PSD_units, str)
+        assert frequency_units is None or isinstance(frequency_units, str)
+        f.close()
+
+
+class TestPSDRetrieval:
+    """Tests for PSD spatial map retrieval."""
+    
+    def test_get_PSD_as_spatial_map(self, simple_brim_file):
+        """Test getting PSD as spatial map for non-sparse data."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        
+        PSD, frequency, PSD_units, frequency_units = data.get_PSD_as_spatial_map()
+        
+        assert PSD is not None
+        assert frequency is not None
+        assert isinstance(PSD, np.ndarray)
+        assert isinstance(frequency, np.ndarray)
+        
+        # PSD should be at least 4D: (z, y, x, spectrum)
+        assert PSD.ndim >= 4
+        
+        # frequency should be broadcastable to PSD shape
+        assert frequency.ndim == 1 or frequency.shape == PSD.shape
+        f.close()
+    
+    def test_get_PSD_as_spatial_map_sparse(self, simple_brim_file_sparse):
+        """Test getting PSD as spatial map for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        
+        PSD, frequency, PSD_units, frequency_units = data.get_PSD_as_spatial_map()
+        
+        assert PSD is not None
+        assert frequency is not None
+        assert isinstance(PSD, np.ndarray)
+        assert isinstance(frequency, np.ndarray)
+        
+        # For sparse data, PSD should be reshaped to spatial dimensions
+        # PSD should be at least 4D: (z, y, x, spectrum)
+        assert PSD.ndim >= 4
+        
+        # frequency should be broadcastable to PSD shape
+        assert frequency.ndim == 1 or frequency.shape == PSD.shape
+        f.close()
+    
+    def test_PSD_spatial_map_shapes_match(self, simple_brim_file, simple_brim_file_sparse):
+        """Test that sparse and non-sparse data produce compatible spatial maps."""
+        # Non-sparse data
+        f_ns = brim.File(simple_brim_file)
+        data_ns = f_ns.get_data()
+        PSD_ns, freq_ns, _, _ = data_ns.get_PSD_as_spatial_map()
+        
+        # Sparse data
+        f_s = brim.File(simple_brim_file_sparse)
+        data_s = f_s.get_data()
+        PSD_s, freq_s, _, _ = data_s.get_PSD_as_spatial_map()
+        
+        # Both should have the same spatial dimensions (first 3 dimensions)
+        assert PSD_ns.shape[:3] == PSD_s.shape[:3]
+        
+        # Both should have the same frequency dimension (last dimension)
+        assert PSD_ns.shape[-1] == PSD_s.shape[-1]
+        
+        f_ns.close()
+        f_s.close()
 
 
 class TestMetadataAccess:
@@ -110,9 +257,29 @@ class TestAnalysisResults:
         assert len(ar_list) > 0
         f.close()
     
+    def test_list_analysis_results_sparse(self, simple_brim_file_sparse):
+        """Test listing analysis results for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        ar_list = data.list_AnalysisResults()
+        
+        assert ar_list is not None
+        assert len(ar_list) > 0
+        f.close()
+    
     def test_list_analysis_results_with_names(self, simple_brim_file):
         """Test listing analysis results with custom names."""
         f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar_results = data.list_AnalysisResults(retrieve_custom_name=True)
+        
+        assert ar_results is not None
+        assert isinstance(ar_results, list)
+        f.close()
+    
+    def test_list_analysis_results_with_names_sparse(self, simple_brim_file_sparse):
+        """Test listing analysis results with custom names for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
         data = f.get_data()
         ar_results = data.list_AnalysisResults(retrieve_custom_name=True)
         
@@ -130,9 +297,28 @@ class TestAnalysisResults:
         assert isinstance(ar, brim.Data.AnalysisResults)
         f.close()
     
+    def test_get_analysis_results_sparse(self, simple_brim_file_sparse):
+        """Test getting analysis results for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+        
+        assert ar is not None
+        assert isinstance(ar, brim.Data.AnalysisResults)
+        f.close()
+    
     def test_get_analysis_results_by_index(self, simple_brim_file):
         """Test getting analysis results by index."""
         f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results(0)
+        
+        assert ar is not None
+        f.close()
+    
+    def test_get_analysis_results_by_index_sparse(self, simple_brim_file_sparse):
+        """Test getting analysis results by index for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
         data = f.get_data()
         ar = data.get_analysis_results(0)
         
@@ -166,6 +352,34 @@ class TestAnalysisResults:
         
         assert ar is not None
         f.close()
+    
+    def test_create_analysis_results_sparse(self, empty_brim_file, sample_data_sparse):
+        """Test creating new analysis results for sparse data."""
+        f = brim.File(empty_brim_file, mode='r+')
+        data = f.create_data_group_sparse(
+            sample_data_sparse['PSD'],
+            sample_data_sparse['frequency'],
+            scanning=sample_data_sparse['scanning']
+        )
+        
+        ar = data.create_analysis_results_group(
+            {
+                'shift': sample_data_sparse['shift'],
+                'shift_units': 'GHz',
+                'width': sample_data_sparse['width'],
+                'width_units': 'GHz'
+            },
+            {
+                'shift': sample_data_sparse['shift'],
+                'shift_units': 'GHz',
+                'width': sample_data_sparse['width'],
+                'width_units': 'GHz'
+            },
+            name='test_ar_sparse'
+        )
+        
+        assert ar is not None
+        f.close()
 
 
 class TestDataCreation:
@@ -185,6 +399,20 @@ class TestDataCreation:
         assert 'custom_name' in name or name == 'custom_name'
         f.close()
     
+    def test_create_sparse_with_custom_name(self, empty_brim_file, sample_data_sparse):
+        """Test creating sparse data group with custom name."""
+        f = brim.File(empty_brim_file, mode='r+')
+        data = f.create_data_group_sparse(
+            sample_data_sparse['PSD'],
+            sample_data_sparse['frequency'],
+            scanning=sample_data_sparse['scanning'],
+            name='custom_sparse_name'
+        )
+        
+        name = data.get_name()
+        assert 'custom_sparse_name' in name or name == 'custom_sparse_name'
+        f.close()
+    
     def test_create_with_different_dimensions(self, empty_brim_file):
         """Test creating data with different dimensions."""
         f = brim.File(empty_brim_file, mode='r+')
@@ -197,3 +425,95 @@ class TestDataCreation:
         data = f.create_data_group(PSD, frequency, pixel_size)
         assert data is not None
         f.close()
+    
+    def test_create_sparse_with_different_dimensions(self, empty_brim_file):
+        """Test creating sparse data with different dimensions."""
+        f = brim.File(empty_brim_file, mode='r+')
+        
+        # Smaller dataset - flattened for sparse
+        n_spectra = 24  # 2 * 3 * 4
+        n_freq = 50
+        PSD = np.random.rand(n_spectra, n_freq)
+        frequency = np.linspace(5, 10, n_freq)
+        
+        # Create spatial mapping
+        indices = np.arange(n_spectra)
+        cartesian_vis = np.reshape(indices, (2, 3, 4))
+        scanning = {
+            'Cartesian_visualisation': cartesian_vis,
+            'Cartesian_visualisation_pixel': (1.0, 1.0, 1.0),
+            'Cartesian_visualisation_pixel_unit': 'um'
+        }
+        
+        data = f.create_data_group_sparse(PSD, frequency, scanning=scanning)
+        assert data is not None
+        f.close()
+
+
+class TestSparseDataConsistency:
+    """Tests to ensure sparse and non-sparse data behave consistently."""
+    
+    def test_spectrum_retrieval_consistency(self, simple_brim_file, simple_brim_file_sparse, sample_data, sample_data_sparse):
+        """Test that the same coordinate yields consistent results for sparse and non-sparse."""
+        # Get spectrum from non-sparse data
+        f_ns = brim.File(simple_brim_file)
+        data_ns = f_ns.get_data()
+        PSD_ns, freq_ns, _, _ = data_ns.get_spectrum_in_image((0, 0, 0))
+        
+        # Get spectrum from sparse data
+        f_s = brim.File(simple_brim_file_sparse)
+        data_s = f_s.get_data()
+        PSD_s, freq_s, _, _ = data_s.get_spectrum_in_image((0, 0, 0))
+        
+        # Should have same length
+        assert len(PSD_ns) == len(PSD_s)
+        assert len(freq_ns) == len(freq_s)
+        
+        # Frequency should be the same
+        np.testing.assert_array_almost_equal(freq_ns, freq_s)
+        
+        # PSD should be very similar (allowing for rounding errors)
+        np.testing.assert_array_almost_equal(PSD_ns, PSD_s, decimal=5)
+        
+        f_ns.close()
+        f_s.close()
+    
+    def test_spatial_map_dimensions(self, simple_brim_file_sparse, sample_data_sparse):
+        """Test that spatial map has correct dimensions for sparse data."""
+        f = brim.File(simple_brim_file_sparse)
+        data = f.get_data()
+        
+        # Get the spatial map dimensions from the Cartesian visualisation
+        expected_shape = sample_data_sparse['scanning']['Cartesian_visualisation'].shape
+        
+        # Get PSD as spatial map
+        PSD, _, _, _ = data.get_PSD_as_spatial_map()
+        
+        # First 3 dimensions should match the expected spatial dimensions
+        assert PSD.shape[:3] == expected_shape
+        
+        f.close()
+    
+    def test_pixel_size_consistency(self, simple_brim_file, simple_brim_file_sparse):
+        """Test that pixel size is properly retrieved for both sparse and non-sparse."""
+        # Non-sparse data
+        f_ns = brim.File(simple_brim_file)
+        data_ns = f_ns.get_data()
+        px_size_ns = data_ns._spatial_map_px_size
+        assert px_size_ns is not None
+        assert len(px_size_ns) == 3
+        
+        # Sparse data
+        f_s = brim.File(simple_brim_file_sparse)
+        data_s = f_s.get_data()
+        px_size_s = data_s._spatial_map_px_size
+        assert px_size_s is not None
+        assert len(px_size_s) == 3
+        
+        # Both should have the same pixel sizes
+        for i in range(3):
+            assert px_size_ns[i].value == px_size_s[i].value
+        
+        f_ns.close()
+        f_s.close()
+

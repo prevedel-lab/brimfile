@@ -31,5 +31,8 @@ jobs:
         pip install pytest
     
     - name: Run tests with pytest
+      env:
+        PYTHONASYNCIODEBUG: true
+        PYTHONTRACEMALLOC: "20"
       run: |
         pytest tests/ -v --import-mode=importlib

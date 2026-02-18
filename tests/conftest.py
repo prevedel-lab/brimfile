@@ -128,6 +128,56 @@ def simple_brim_file(tmp_path, sample_data):
 
 
 @pytest.fixture
+def simple_brim_file_sparse(tmp_path, sample_data_sparse):
+    """Create a simple brim file with sparse data for testing."""
+    filename = os.path.join(tmp_path, 'test_file_sparse.brim.zarr')
+    
+    f = brim.File.create(filename, store_type=brim.StoreType.AUTO)
+    
+    # Create sparse data group
+    d = f.create_data_group_sparse(
+        sample_data_sparse['PSD'],
+        sample_data_sparse['frequency'],
+        scanning=sample_data_sparse['scanning'],
+        name='test_data_sparse'
+    )
+    
+    # Add basic metadata
+    Attr = brim.Metadata.Item
+    datetime_now = datetime.now().isoformat()
+    temp = Attr(22.0, 'C')
+    md = d.get_metadata()
+    md.add(brim.Metadata.Type.Experiment, {'Datetime': datetime_now, 'Temperature': temp})
+    md.add(brim.Metadata.Type.Optics, {'Wavelength': Attr(660, 'nm')})
+    
+    # Create analysis results for sparse data
+    ar = d.create_analysis_results_group(
+        {
+            'shift': sample_data_sparse['shift'],
+            'shift_units': 'GHz',
+            'width': sample_data_sparse['width'],
+            'width_units': 'GHz'
+        },
+        {
+            'shift': sample_data_sparse['shift'],
+            'shift_units': 'GHz',
+            'width': sample_data_sparse['width'],
+            'width_units': 'GHz'
+        },
+        name='test_analysis_sparse',
+        fit_model=brim.Data.AnalysisResults.FitModel.Lorentzian
+    )
+    
+    f.close()
+    
+    yield filename
+    
+    # Cleanup
+    if os.path.exists(filename):
+        shutil.rmtree(filename)
+
+
+@pytest.fixture
 def empty_brim_file(tmp_path):
     """Create an empty brim file for testing."""
     filename = os.path.join(tmp_path, 'empty_file.brim.zarr')
