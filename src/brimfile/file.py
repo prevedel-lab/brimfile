@@ -47,7 +47,8 @@ class File:
             
     def __del__(self):
         try:
-            self.close()
+            if hasattr(self, '_file'):
+                self.close()
         except Exception as e:            
             # don't throw an error if the file cannot be closed
             warnings.warn(f"Cannot close the file: {e}")
@@ -126,11 +127,16 @@ class File:
                                 index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
         Adds a new [sparse data entry](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) to the file.
-        Check the documentation for `brimfile.data.Data._add_data` for more details on the parameters.
+        
+        Sparse data allows storage of spectra in a flattened format (first dimension is the spectrum index),
+        with spatial mapping provided separately. This is efficient for data with irregular sampling or missing pixels.
+        
         Parameters:
-            PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. The last dimension contains the spectra.
+            PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. First dimension is spectrum index,
+                last dimension contains the spectral data. Shape: (n_spectra, ..., n_freq_points).
             frequency (np.ndarray): The frequency data corresponding to the PSD. Must be broadcastable to the PSD array.
-            scanning (dict): Metadata related to the scanning process. See Data._add_data for more details.
+            scanning (dict): Dictionary defining the spatial mapping. Must include at least 'Spatial_map' or 'Cartesian_visualisation'.
+                See `brimfile.data.Data._add_data` docstring for detailed structure of the scanning dictionary.
             timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new data group. Defaults to None.
@@ -150,8 +156,9 @@ class File:
         Parameters:
             PSD (np.ndarray): The Power Spectral Density (PSD) data to be added. The last dimension contains the spectra.
             frequency (np.ndarray): The frequency data corresponding to the PSD. Must be broadcastable to the PSD array.
-            scanning (dict): Metadata related to the scanning process. See Data._add_data for more details.
-            px_size_um (tuple): A tuple of 3 elements, in the order z,y,x, corresponding to the pixel size in um.
+            scanning (dict, optional): Spatial mapping metadata. Required for sparse=True, optional for sparse=False.
+                See `brimfile.data.Data._add_data` docstring for detailed structure.
+            px_size_um (tuple, optional): A tuple of 3 elements (z, y, x) for pixel size in μm. For non-sparse data only.
             timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.
             sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
@@ -180,7 +187,7 @@ class File:
             sync(self._file.create_attr(d._group, 'element_size', tuple(px_size_um)))
             units.add_to_attribute(self._file, d._group, 'element_size', 'um')
         elif not sparse:
-            warnings.warn("Pixel size is not provided for non-sparse data. It is recommended to provide it for proper data interpretation.")
+            warnings.warn("Pixel size is not provided for non-sparse data. It is recommended to provide it for proper spatial calibration and visualization.")
         # add the data to the data group
         d._add_data(PSD, frequency, scanning = scanning,
                    timestamp=timestamp, compression=compression)

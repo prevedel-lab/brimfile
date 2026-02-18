@@ -16,7 +16,7 @@ metadata and analysis results through their corresponding classes.
 - [File](#file): represents a brim file, which can be opened or created.
 - [Data](#data): represents a data group in the brim file, which contains the spectral data and metadata.
 - [Metadata](#metadata): represents the metadata associated to a data group (or to the whole file).
-- [AnalysysResults](#analysisresults): represents the results of the analysis of the spectral data.
+- [AnalysisResults](#analysisresults): represents the results of the analysis of the spectral data.
 
 
 ## Install brimfile
@@ -126,8 +126,8 @@ a frequency array which might have the same size as PSD or be 1D, in case the fr
 # or create a new one
 data = f.create_data_group(PSD, freq_GHz, (dz, dy, dx), name='my_data_group')
 ```
-Alternatively you can use `brimfile.file.File.create_data_group_raw`, which let you directly assign the correspondence
-between the spatial positions and the spectra trhough the `scanning` dictionary.
+Alternatively you can use `brimfile.file.File.create_data_group_sparse` for sparse data, which lets you directly assign the correspondence
+between the spatial positions and the spectra through the `scanning` dictionary.
 
 Once you have an istance of `brimfile.data.Data`, you can get the spectrum corresponding to a pixel in the image
 by calling the `brimfile.data.Data.get_spectrum_in_image` method:
