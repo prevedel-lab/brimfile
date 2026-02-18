@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-remote-store = ["zarr[remote]>=3.11", "s3fs"]
+remote-store = ["zarr[remote]>=3.1.1", "s3fs"]
 export-tiff = ["tifffile"]
 converter = ["h5py"]
 
