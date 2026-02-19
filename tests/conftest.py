@@ -99,6 +99,7 @@ def simple_brim_file(tmp_path, sample_data):
     md = d.get_metadata()
     md.add(brim.Metadata.Type.Experiment, {'Datetime': datetime_now, 'Temperature': temp})
     md.add(brim.Metadata.Type.Optics, {'Wavelength': Attr(660, 'nm')})
+    md.add(brim.Metadata.Type.Brillouin, {'Scattering_angle': Attr(180, 'deg')})
     
     # Create analysis results
     ar = d.create_analysis_results_group(
@@ -149,6 +150,7 @@ def simple_brim_file_sparse(tmp_path, sample_data_sparse):
     md = d.get_metadata()
     md.add(brim.Metadata.Type.Experiment, {'Datetime': datetime_now, 'Temperature': temp})
     md.add(brim.Metadata.Type.Optics, {'Wavelength': Attr(660, 'nm')})
+    md.add(brim.Metadata.Type.Brillouin, {'Scattering_angle': Attr(180, 'deg')})
     
     # Create analysis results for sparse data
     ar = d.create_analysis_results_group(

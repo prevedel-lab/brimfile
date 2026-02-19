@@ -70,7 +70,7 @@ class Metadata:
         Returns:
             The value of the requested metadata attribute and its units.
         Raises:
-            Exception: If the metadata attribute cannot be retrieved from either the specific
+            KeyError: If the metadata attribute cannot be retrieved from either the specific
                        data group or the general metadata group.
         """
 
@@ -258,3 +258,71 @@ class Metadata:
         balanced = 'balanced'
         single_PD = 'single_PD'
         single_APD = 'single_APD'
+
+# utility functions to retrieve specific metadata attributes, with unit conversion if necessary. 
+
+    async def _get_wavelength_nm_async(self) -> float:
+        """
+            Retrieve the wavelength metadata and convert it to nm if necessary. If the wavelength metadata is not found, an exception is raised.
+            If the wavelength metadata has no units defined, a warning is issued and the value is assumed to be in nm.
+            Returns:
+                float: The wavelength in nm.
+            Raises:
+                Exception: If the wavelength metadata cannot be retrieved or if the unit is not recognized.
+        """
+        wl = await self._get_single_item(Metadata.Type.Optics, 'Wavelength')
+        if wl.units is None:
+            warnings.warn(f"Wavelength metadata has no units defined. Assuming the value is in nm.")
+            return float(wl.value)
+        unit = str(wl.units).lower()
+        value = float(wl.value)
+        if unit in ('nm', 'nanometer', 'nanometers'):
+            return value
+        if unit in ('um', 'µm', 'micrometer', 'micrometers'):
+            return value * 1e3
+        if unit in ('m', 'meter', 'meters'):
+            return value * 1e9
+        raise ValueError(f"Unsupported wavelength unit '{wl.units}'.")
+
+    async def _get_temperature_c_async(self) -> float:
+        """
+            Retrieve the temperature metadata and convert it to Celsius if necessary. If the temperature metadata is not found, an exception is raised.
+            If the temperature metadata has no units defined, a warning is issued and the value is assumed to be in Celsius.
+            Returns:
+                float: The temperature in Celsius.
+            Raises:
+                Exception: If the temperature metadata cannot be retrieved or if the unit is not recognized.
+        """    
+        t = await self._get_single_item(Metadata.Type.Experiment, 'Temperature')       
+        if t.units is None:
+            warnings.warn(f"Temperature metadata has no units defined. Assuming the value is in Celsius.")
+            return float(t.value)
+        unit = str(t.units).lower()
+        value = float(t.value)
+        if unit in ('c', '°c', 'celsius'):
+            return value
+        if unit in ('k', 'kelvin'):
+            return value - 273.15
+        raise ValueError(f"Unsupported temperature unit '{t.units}'.")
+
+    async def _get_scattering_angle_deg_async(self) -> float:
+        """
+            Retrieve the scattering angle metadata and convert it to degrees if necessary. If the scattering angle metadata is not found, an exception is raised.
+            If the scattering angle metadata has no units defined, a warning is issued and the value is assumed to be in degrees.
+            Returns:
+                float: The scattering angle in degrees.
+            Raises:
+                Exception: If the scattering angle metadata cannot be retrieved or if the unit is not recognized.
+        """
+        sa = await self._get_single_item(Metadata.Type.Brillouin, 'Scattering_angle')
+        if sa.units is None:
+            warnings.warn(f"Scattering angle metadata has no units defined. Assuming the value is in degrees.")
+            return float(sa.value)
+        unit = str(sa.units).lower()
+        value = float(sa.value)
+        if unit in ('deg', '°', 'degree', 'degrees'):
+            return value
+        if unit in ('rad', 'radian', 'radians'):
+            return value * 180 / 3.141592653589793
+        raise ValueError(f"Unsupported scattering angle unit '{sa.units}'.")
+      

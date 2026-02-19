@@ -11,6 +11,7 @@ from .utils import var_to_singleton, concatenate_paths, get_object_name
 from .constants import brim_obj_names
 
 from .metadata import Metadata
+from .physics import Brillouin_shift_water
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ class AnalysisResults:
         Enum representing the type of analysis results.
         """
         Shift = "Shift"
+        # elastic contrast as defined in https://doi.org/10.1007/s12551-020-00701-9
+        Elastic_contrast = "Elastic_contrast"
         Width = "Width"
         Amplitude = "Amplitude"
         Offset = "Offset"
@@ -69,6 +72,14 @@ class AnalysisResults:
         if sparse:
             if spatial_map is None or spatial_map_px_size is None:
                 raise ValueError("For sparse analysis results, the spatial map and pixel size must be provided.")
+    def _get_metadata(self) -> Metadata:
+        """
+        Retrieve the Metadata object associated with the current AnalysisResults.
+
+        Returns:
+            Metadata: The Metadata object associated with the current Data group.
+        """
+        return Metadata(self._file, self._data_group_path)
     def get_name(self):
         """
         Returns the name of the Analysis group.
@@ -194,7 +205,7 @@ class AnalysisResults:
         if fit_model is not None:
             sync(self._file.create_attr(ar_group, 'Fit_model', fit_model.value))
 
-    def get_units(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str:
+    def get_units(self, qt: Quantity, pt: PeakType = PeakType.AntiStokes, index: int = 0) -> str | None:
         """
         Retrieve the units of a specified quantity from the data file.
 
@@ -204,8 +215,10 @@ class AnalysisResults:
             index (int, optional): The index of the quantity in case multiple quantities exist. Defaults to 0.
 
         Returns:
-            str: The units of the specified quantity as a string.
+            str | None: The units of the specified quantity as a string, or None if no units are defined.
         """
+        if qt == AnalysisResults.Quantity.Elastic_contrast:
+            return None
         dt_name = AnalysisResults._get_quantity_name(qt, pt, index)
         full_path = concatenate_paths(self._path, dt_name)
         return sync(units.of_object(self._file, full_path))
@@ -223,10 +236,35 @@ class AnalysisResults:
         Returns:
             str: The units of the specified quantity as a string.
         """
+        if qt == AnalysisResults.Quantity.Elastic_contrast:
+            raise ValueError(f"Units for {qt.name} are not settable because this quantity is computed on-the-fly.")
         dt_name = AnalysisResults._get_quantity_name(qt, pt, index)
         full_path = concatenate_paths(self._path, dt_name)
         return units.add_to_object(self._file, full_path, un)
-    
+
+    async def _compute_elastic_contrast_async(self, shift):
+        shift_arr = np.asarray(shift)
+        try:
+            md = self._get_metadata()
+            coros = [md._get_wavelength_nm_async(), md._get_temperature_c_async(), md._get_scattering_angle_deg_async()]
+            res = await asyncio.gather(*coros, return_exceptions=True)
+            wavelength_nm, temperature_c, scattering_angle_deg = res
+            if isinstance(wavelength_nm, Exception):
+                raise ValueError("Could not retrieve the wavelength for computing Elastic Contrast.")
+            if isinstance(temperature_c, Exception):
+                temperature_c = 22  # default value
+                warnings.warn("Could not retrieve the temperature for computing Elastic Contrast. Using default value of 22 °C.")
+            if isinstance(scattering_angle_deg, Exception):
+                scattering_angle_deg = 180  # default value
+                warnings.warn("Could not retrieve the scattering angle for computing Elastic Contrast. Using default value of 180 deg.")
+            water_shift = Brillouin_shift_water(wavelength_nm, temperature_c, scattering_angle_deg)
+            if np.nanmean(shift_arr) < 0:
+                water_shift = -water_shift
+            return shift_arr / water_shift - 1
+        except Exception as e:
+            raise ValueError(
+                f"Could not compute Elastic_contrast from metadata ({e}).")
+
     @property
     def fit_model(self) -> 'AnalysisResults.FitModel':
         """
@@ -301,6 +339,10 @@ class AnalysisResults:
             If there are additional parameters, more dimensions are added in the order z, y, x, par1, par2, ...
             The pixel size is a tuple of 3 Metadata.Item in the order z, y, x.
         """
+        if qt == AnalysisResults.Quantity.Elastic_contrast:
+            shift_img, px_size = self.get_image(AnalysisResults.Quantity.Shift, pt, index)
+            return sync(self._compute_elastic_contrast_async(shift_img)), px_size
+
         pt_type = AnalysisResults.PeakType
         data = None
         if pt == pt_type.average:
@@ -347,6 +389,9 @@ class AnalysisResults:
         if len(coord) != 3:
             raise ValueError(
                 "'coord' must have 3 elements corresponding to z, y, x")
+        if qt == AnalysisResults.Quantity.Elastic_contrast:
+            shift_value = await self.get_quantity_at_pixel_async(coord, AnalysisResults.Quantity.Shift, pt, index)
+            return await self._compute_elastic_contrast_async(shift_value)
         if self._sparse:
             i = self._spatial_map[*coord]
             assert i.size == 1
@@ -413,7 +458,7 @@ class AnalysisResults:
             qts_ls = ()
             dts_ls = ()
 
-            qts = [qt for qt in as_cls.Quantity]
+            qts = [qt for qt in as_cls.Quantity if qt is not as_cls.Quantity.Elastic_contrast]
             coros = [self._file.open_dataset(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index_peak))) for qt in qts]
             
             # open the datasets asynchronously, excluding those that do not exist
@@ -457,6 +502,13 @@ class AnalysisResults:
                 )
             if not all(res[qt.name][pt.name].units == res[qt.name][pts[0].name].units for pt in pts):
                 warnings.warn(f"The units of {pts} are not consistent.")
+
+        if AnalysisResults.Quantity.Shift.name in res:
+            ec_name = AnalysisResults.Quantity.Elastic_contrast.name
+            res[ec_name] = {}
+            for pt_name, item in res[AnalysisResults.Quantity.Shift.name].items():
+                ec = await self._compute_elastic_contrast_async(item.value)
+                res[ec_name][pt_name] = Metadata.Item(ec, None)
         return res
 
     @classmethod
@@ -471,6 +523,8 @@ class AnalysisResults:
         """
         if not pt in (cls.PeakType.AntiStokes, cls.PeakType.Stokes):
             raise ValueError("pt has to be either Stokes or AntiStokes")
+        if qt == cls.Quantity.Elastic_contrast:
+            raise ValueError("Elastic_contrast is a computed quantity and is not stored in the file.")
         if qt == cls.Quantity.R2 or qt == cls.Quantity.RMSE or qt == cls.Quantity.Cov_matrix:
             name = f"Fit_error_{str(pt.value)}_{index}/{str(qt.value)}"
         else:
@@ -540,11 +594,13 @@ class AnalysisResults:
         as_cls = AnalysisResults
         ls = ()
 
-        qts = [qt for qt in as_cls.Quantity]
+        qts = [qt for qt in as_cls.Quantity if qt is not as_cls.Quantity.Elastic_contrast]
         coros = [self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index))) for qt in qts]
         
         qt_exists = await asyncio.gather(*coros)
         for i, exists in enumerate(qt_exists):
             if exists:
                 ls += (qts[i],)
+        if as_cls.Quantity.Shift in ls:
+            ls += (as_cls.Quantity.Elastic_contrast,)
         return ls

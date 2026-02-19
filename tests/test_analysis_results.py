@@ -6,6 +6,7 @@ Unit tests for the AnalysisResults class in brimfile.
 import numpy as np
 
 import brimfile as brim
+from brimfile.physics import Brillouin_shift_water
 
 
 class TestAnalysisResultsProperties:
@@ -61,6 +62,7 @@ class TestPeakTypesAndQuantities:
         assert isinstance(quantities, (list, tuple))
         assert len(quantities) > 0
         assert isinstance(quantities[0], brim.Data.AnalysisResults.Quantity)
+        assert brim.Data.AnalysisResults.Quantity.Elastic_contrast in quantities
         f.close()
     
     def test_peak_type_enum_values(self):
@@ -75,6 +77,7 @@ class TestPeakTypesAndQuantities:
         Quantity = brim.Data.AnalysisResults.Quantity
         assert Quantity.Shift is not None
         assert Quantity.Width is not None
+        assert Quantity.Elastic_contrast is not None
 
 
 class TestImageRetrieval:
@@ -110,6 +113,22 @@ class TestImageRetrieval:
         
         assert img is not None
         assert isinstance(img, np.ndarray)
+        f.close()
+
+    def test_get_image_elastic_contrast(self, simple_brim_file):
+        """Test getting elastic contrast image computed from shift."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        PeakType = brim.Data.AnalysisResults.PeakType
+
+        img_shift, _ = ar.get_image(Quantity.Shift, PeakType.average)
+        img_ec, _ = ar.get_image(Quantity.Elastic_contrast, PeakType.average)
+
+        water_shift = Brillouin_shift_water(660, 22, 180)
+        np.testing.assert_allclose(img_ec, img_shift / water_shift - 1)
         f.close()
     
     def test_image_dimensions(self, simple_brim_file, sample_data):
@@ -157,6 +176,18 @@ class TestUnitsRetrieval:
         
         assert units is not None
         assert isinstance(units, str)
+        f.close()
+
+    def test_get_units_elastic_contrast(self, simple_brim_file):
+        """Test getting units for elastic contrast quantity."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        units = ar.get_units(Quantity.Elastic_contrast)
+
+        assert units is None
         f.close()
 
 
@@ -209,6 +240,23 @@ class TestPixelQuantityRetrieval:
             value = ar.get_quantity_at_pixel(coord, Quantity.Shift, PeakType.average)
             assert value is not None
         
+        f.close()
+
+    def test_get_elastic_contrast_at_pixel(self, simple_brim_file):
+        """Test getting elastic contrast at pixel as shift-normalized value."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        PeakType = brim.Data.AnalysisResults.PeakType
+
+        coord = (1, 3, 4)
+        shift = ar.get_quantity_at_pixel(coord, Quantity.Shift, PeakType.average)
+        ec = ar.get_quantity_at_pixel(coord, Quantity.Elastic_contrast, PeakType.average)
+
+        water_shift = Brillouin_shift_water(660, 22, 180)
+        np.testing.assert_allclose(ec, shift / water_shift -1)
         f.close()
 
 
