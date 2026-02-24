@@ -137,14 +137,14 @@ PSD, frequency, PSD_units, frequency_units = data.get_spectrum_in_image((pz,py,p
 
 ### Metadata
 
-You can then get a `brimfile.metadata.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
+You can then get a `brimfile.metadata.metadata_class.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
 The returned Metadata object contains all the metadata associated with the file and the data group.
 ```Python
 metadata = data.get_metadata()
 ```
 The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md).
 
-New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.Metadata.add` method.
+New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.metadata_class.Metadata.add` method.
 ```Python
 import datetime
 
@@ -158,7 +158,7 @@ A single metadata item can be retrieved by indexing the `Metadata` object, which
 ```Python
 datetime = metadata['Experiment.Datetime']
 ```
-A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.Metadata.all_to_dict` method.
+A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.metadata_class.Metadata.all_to_dict` method.
 ```Python
 metadata.all_to_dict()
 ```

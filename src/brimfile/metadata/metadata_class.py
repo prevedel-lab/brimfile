@@ -1,8 +1,10 @@
-from .file_abstraction import FileAbstraction, sync, _gather_sync
-from .utils import concatenate_paths
+from ..file_abstraction import FileAbstraction, sync, _gather_sync
+from ..utils import concatenate_paths
+from . import metadata_schema
+from .metadata_schema import MetadataField, MetadataValue
 
-from . import units
-from .constants import brim_obj_names, reserved_attr_names
+from .. import units
+from ..constants import brim_obj_names, reserved_attr_names
 
 import warnings
 from enum import Enum
@@ -16,7 +18,7 @@ class Metadata:
 
     class Item:
         # units should be a str. If None, no units is defined
-        def __init__(self, value, units: str = None):
+        def __init__(self, value: MetadataValue , units: str | None = None):
             self.value = value
             self.units = units
 
@@ -26,12 +28,7 @@ class Metadata:
                 res += str(self.units)
             return res
 
-    class Type(Enum):
-        Experiment = 'Experiment'
-        Optics = 'Optics'
-        Brillouin = 'Brillouin'
-        Acquisition = 'Acquisition'
-        Spectrometer = 'Spectrometer'
+    Type = metadata_schema.Type
 
     def __init__(self, file: FileAbstraction, data_full_path: str = None):
         """
@@ -165,12 +162,20 @@ class Metadata:
                 "The current metadata object is not linked to a data group. Set local to False to add the metadata to the general metadata group.")
         if not local:
             general_metadata = sync(self._load_general_metadata())
+        schema_fields = metadata_schema.METADATA_SCHEMA[type]
         # iterate over the metadata dictionary and add each attribute
         for key, value in metadata.items():
             if not isinstance(value, Metadata.Item):
-                # TODO: issue a warning if the specific metadata requires units and they are not provided
                 # if no units are provided, we assume None
-                value = Metadata.Item(value, None)            
+                value = Metadata.Item(value, None)
+
+            # Get the metadata field from the schema if it exists
+            field: MetadataField = next((f for f in schema_fields if f.name == key), None)
+            if field is not None and field.units_required and value.units is None:
+                raise ValueError(
+                    f"Metadata attribute {type.value}.{field.name} requires units."
+                )
+
             val = value.value
             # convert Enum to its value
             if isinstance(val, Enum):
@@ -204,60 +209,6 @@ class Metadata:
         #assign them to a dictionary
         full_metadata = {type.name: dic for type, dic in zip(types, res)}
         return full_metadata
-
-    # -------------------- Enums definition --------------------
-    class ImmersionMedium(Enum):
-        other = 'other'
-        air = 'air'
-        water = 'water'
-        oil = 'oil'
-
-    class SignalType(Enum):
-        other = 'other'
-        spontaneous = 'spontaneous'
-        stimulated = 'stimulated'
-        time_resolved = 'time_resolved'
-
-    class PhononsMeasured(Enum):
-        other = 'other'
-        longitudinal = 'longitudinal-like'
-        transverse = 'transverse-like'
-        longitudinal_Transverse = 'longitudinal-transverse-like'
-
-    class PolarizationProbedAnalyzed(Enum):
-        other = 'other'
-        VH = 'VH'
-        HV = 'HV'
-        HH = 'HH'
-        VV = 'VV'
-        V_Unpolarized = 'V-unpolarized'
-        Circular_Circular = 'circular-circular'
-
-    class ScanningStrategy(Enum):
-        other = 'other'
-        point_scanning = 'point_scanning'
-        line_scanning = 'line_scanning'
-        light_sheet = 'light_sheet'
-        time_resolved = 'time_resolved'
-
-    class SpectrometerType(Enum):
-        other = 'other'
-        VIPA = 'VIPA'
-        FP = 'Fabry_Perot'
-        stimulated = 'stimulated'
-        heterodyne = 'heterodyne'
-        time_domain = 'time_domain'
-        impulsive = 'impulsive'
-
-    class DetectorType(Enum):
-        other = 'other'
-        EMCCD = 'EMCCD'
-        CCD = 'CCD'
-        sCMOS = 'sCMOS'
-        PMT = 'PMT'
-        balanced = 'balanced'
-        single_PD = 'single_PD'
-        single_APD = 'single_APD'
 
 # utility functions to retrieve specific metadata attributes, with unit conversion if necessary. 
 
