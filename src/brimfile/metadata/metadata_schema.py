@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import TypeAlias
 from dataclasses import dataclass
+import textwrap
+import shutil
 
 __docformat__ = "google"
 
@@ -147,3 +149,126 @@ METADATA_SCHEMA: dict[Type, tuple[MetadataField, ...]] = {
         MetadataField('Confocal_pinhole_diameter', float, required=False, units_required=True, description=""),
     ),
 }
+
+def schema_as_string(
+    include_description: bool = True,
+    description_width: int | None = None,
+    attr_width: int = 30,
+    type_width: int | None = None,
+    mandatory_width: int = 10    
+) -> str:
+    """Return metadata schema formatting as a string.
+
+    Output is grouped by metadata section and includes field type,
+    enum values (if any), and whether each field is mandatory.
+
+    Args:
+        include_description: Whether to include the description column.
+        description_width: Column width for descriptions. If ``None``, computed
+            from terminal width with a sensible minimum when descriptions are shown.
+        attr_width: Column width for attribute names.
+        type_width: Column width for type information. If ``None``, computed
+            from terminal width with a sensible minimum.
+        mandatory_width: Column width for mandatory flag.
+    """
+    sections = METADATA_SCHEMA
+    if not sections:
+        return "No metadata schema defined."
+
+    terminal_columns = shutil.get_terminal_size(fallback=(120, 20)).columns
+
+    min_attr_width = 12
+    min_mandatory_width = 9
+    min_type_width = 16
+    min_description_width = 16
+
+    attr_width = max(min_attr_width, attr_width)
+    mandatory_width = max(min_mandatory_width, mandatory_width)
+
+    if include_description:
+        separators = 3
+        fixed_width = attr_width + mandatory_width + separators
+        available_for_dynamic = max(32, terminal_columns - fixed_width)
+
+        if type_width is None and description_width is None:
+            type_width = max(min_type_width, int(available_for_dynamic * 0.55))
+            description_width = max(min_description_width, available_for_dynamic - type_width)
+        elif type_width is None:
+            description_width = max(min_description_width, description_width)
+            type_width = max(min_type_width, available_for_dynamic - description_width)
+        elif description_width is None:
+            type_width = max(min_type_width, type_width)
+            description_width = max(min_description_width, available_for_dynamic - type_width)
+        else:
+            type_width = max(min_type_width, type_width)
+            description_width = max(min_description_width, description_width)
+
+        total_width = fixed_width + type_width + description_width
+        if total_width > terminal_columns:
+            overflow = total_width - terminal_columns
+            reducible_description = max(0, description_width - min_description_width)
+            reduce_from_description = min(overflow, reducible_description)
+            description_width -= reduce_from_description
+            overflow -= reduce_from_description
+
+            if overflow > 0:
+                reducible_type = max(0, type_width - min_type_width)
+                reduce_from_type = min(overflow, reducible_type)
+                type_width -= reduce_from_type
+                overflow -= reduce_from_type
+    else:
+        separators = 2
+        fixed_width = attr_width + mandatory_width + separators
+        available_for_type = max(min_type_width, terminal_columns - fixed_width)
+        if type_width is None:
+            type_width = available_for_type
+        else:
+            type_width = max(min_type_width, min(type_width, available_for_type))
+
+    lines: list[str] = []
+
+    for section_type, fields in sections.items():
+        lines.append("")
+        lines.append(section_type.value)
+        lines.append("-" * len(section_type.value))
+        if include_description:
+            lines.append(
+                f"{'Attribute':<{attr_width}} {'Type':<{type_width}} {'Mandatory':<{mandatory_width}} {'Description':<{description_width}}"
+            )
+            lines.append(
+                f"{'-' * attr_width} {'-' * type_width} {'-' * mandatory_width} {'-' * description_width}"
+            )
+        else:
+            lines.append(f"{'Attribute':<{attr_width}} {'Type':<{type_width}} {'Mandatory':<{mandatory_width}}")
+            lines.append(f"{'-' * attr_width} {'-' * type_width} {'-' * mandatory_width}")
+
+        for field in fields:
+            type_label = field.python_type.__name__
+            if field.enum_type is not None:
+                enum_values = ", ".join([repr(item.value) for item in field.enum_type])
+                type_label = f"enum {field.enum_type.__name__} ({enum_values})"
+
+            mandatory_label = "yes" if field.required else "no"
+            wrapped_type = textwrap.wrap(type_label, width=type_width) or [type_label]
+            if include_description:
+                description_label = field.description or ""
+                description_width = int(description_width)
+                wrapped_description = textwrap.wrap(description_label, width=description_width) or [""]
+                line_count = max(len(wrapped_type), len(wrapped_description))
+                for i in range(line_count):
+                    attr_text = field.name if i == 0 else ""
+                    mandatory_text = mandatory_label if i == 0 else ""
+                    type_line = wrapped_type[i] if i < len(wrapped_type) else ""
+                    description_line = wrapped_description[i] if i < len(wrapped_description) else ""
+                    lines.append(
+                        f"{attr_text:<{attr_width}} {type_line:<{type_width}} {mandatory_text:<{mandatory_width}} {description_line:<{description_width}}"
+                    )
+            else:
+                for i, type_line in enumerate(wrapped_type):
+                    attr_text = field.name if i == 0 else ""
+                    mandatory_text = mandatory_label if i == 0 else ""
+                    lines.append(
+                        f"{attr_text:<{attr_width}} {type_line:<{type_width}} {mandatory_text:<{mandatory_width}}"
+                    )
+
+    return "\n".join(lines).lstrip("\n")

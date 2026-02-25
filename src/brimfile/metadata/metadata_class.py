@@ -30,6 +30,30 @@ class Metadata:
 
     Type = metadata_schema.Type
 
+    @staticmethod
+    def print_schema(
+        include_description: bool = True, *, 
+        description_width: int | None = None,
+        attr_width: int = 30,
+        type_width: int | None = None,
+        mandatory_width: int = 10
+    ) -> None:
+        """Print all metadata attributes defined in ``METADATA_SCHEMA``.
+        Args:
+            include_description: Whether to include the description column.
+            For other arguments, see `brimfile.metadata_schema.MetadataSchema.schema_as_string()`. They are passed to this function to allow configuring the output format when printing the metadata schema.
+        """
+        
+        print(
+            metadata_schema.schema_as_string(
+                include_description=include_description,
+                description_width=description_width,
+                attr_width=attr_width,
+                type_width=type_width,
+                mandatory_width=mandatory_width
+            )
+        )
+
     def __init__(self, file: FileAbstraction, data_full_path: str = None):
         """
         Initialize the Metadata object.
@@ -149,6 +173,7 @@ class Metadata:
     def add(self, type: Type, metadata: dict, local: bool = False):
         """
         Add metadata to the file.
+        Call `brimfile.Metadata.metadata_class.print_schema()` to see the list of available metadata attributes and their description.
         Args:
             type (Type): The type of the metadata to add.
             metadata (dict): A dictionary containing the metadata attributes to add.
@@ -209,6 +234,7 @@ class Metadata:
         #assign them to a dictionary
         full_metadata = {type.name: dic for type, dic in zip(types, res)}
         return full_metadata
+    
 
 # utility functions to retrieve specific metadata attributes, with unit conversion if necessary. 
 

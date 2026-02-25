@@ -45,6 +45,9 @@ if __name__ == "__main__":
 
     d0 = f.create_data_group(PSD, freq_GHz, (dz,dy,dx), name='test1')
 
+    # print all the available metadata fields and their description
+    brim.Metadata.print_schema(True)
+
     # Create the metadata
     Attr = brim.Metadata.Item
     datetime_now = datetime.now().isoformat()
