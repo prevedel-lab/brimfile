@@ -176,13 +176,17 @@ class ZarrFile {
 
     if (this.store_type == ZarrFile.StoreType.ZIP) {
       const entries = (await this.store.info).entries;
-      for (const key of Object.keys(entries)) {
+      const all_objs = Object.keys(entries)
+      for (const key of all_objs) {
         //console.log(key);
         if (key.startsWith(full_path)) {
           let obj = key.slice(full_path.length);
           obj = obj.split("/")[0];
-          if (!obj.endsWith('zarr.json') && !objects.includes(obj)) {
-            objects.push(obj);
+          if (!obj.endsWith('zarr.json') && !objects.includes(obj) && obj!=="") {
+            //check if it is a valid zarr object
+            if (all_objs.includes(full_path+obj+"/zarr.json")) {
+              objects.push(obj);
+              }
           }
         } 
       }
