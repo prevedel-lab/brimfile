@@ -212,6 +212,23 @@ class ZarrFile {
     }
   }
 
+  async isArray(full_path) {
+    try {
+        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
+        return true;
+    } catch (error) {
+        return false;
+    }
+  }
+  async isGroup(full_path) {
+    try {
+        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "group" });
+        return true;
+    } catch (error) {
+        return false;
+    }
+  }
+
   async list_attributes(full_path) {
     await this.#wait_for_ready()
     full_path = standardize_path(full_path);
