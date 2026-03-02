@@ -240,6 +240,49 @@ class ZarrFile {
     const obj = await zarr.open.v3(this.root.resolve(full_path));
     return Object.keys(obj.attrs);
   }
+
+  /******** Generating JSON descriptor ********/
+
+  async generateJsonDescriptor() {
+    // Recursive function to traverse zarr nodes
+    async function recurseNodes(zarr_file, path = '') {
+        const nodeDict = {};
+        
+        // Get attributes
+        nodeDict.attributes = {};
+        const attrs = await zarr_file.list_attributes(path);
+        for (const attr of attrs) {
+            nodeDict.attributes[attr] = await zarr_file.get_attribute(path, attr);
+        }
+        
+        // Check if it's a group or array
+        if (await zarr_file.isGroup(path)) {
+            // It's a group
+            nodeDict.node_type = 'group';
+            
+            // Recursively process children
+            const childs = await zarr_file.list_objects(path);
+            for (const child of childs) {
+                nodeDict[child] = await recurseNodes(zarr_file, path + '/' + child);
+            }
+        } else {
+            // It's an array
+            nodeDict.node_type = 'array';
+            nodeDict.shape = await zarr_file.get_array_shape(path);
+            nodeDict.dtype = await zarr_file.get_array_dtype(path);
+        }
+        
+        return nodeDict;
+    }
+    
+    // Generate the digest starting from root
+    const outDict = await recurseNodes(this);
+    
+    // Convert to JSON and log it
+    const jsonOutput = JSON.stringify(outDict, null, 4);
+    
+    return jsonOutput;
+  }
 }
 
 // the function returns immediately but the returned ZarrFile instance is only valid
