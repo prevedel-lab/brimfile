@@ -118,6 +118,11 @@ class ZarrFile {
     const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return array.shape;
   }
+  async get_array_dtype(full_path){
+    await this.#wait_for_ready()
+    const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
+    return array.dtype;
+  }
 
   /******** Listing ********/
 
