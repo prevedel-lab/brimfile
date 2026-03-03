@@ -56,6 +56,9 @@ if __name__ == "__main__":
 
     md.add(brim.Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp})
     md.add(brim.Metadata.Type.Optics, {'Wavelength':Attr(660, 'nm')})
+    # enums can be added using the enum value or the string representation of the enum member (case-insensitive and ignoring underscores and spaces)
+    md.add(brim.Metadata.Type.Brillouin, {'Signal_type': brim.metadata.SignalType.spontaneous, 
+                                          'Phonons_measured': 'longitudinal',})
     # Add some metadata to the local data group   
     temp = Attr(37.0, 'C')
     md.add(brim.Metadata.Type.Experiment, {'Temperature':temp}, local=True)

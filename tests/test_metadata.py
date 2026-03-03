@@ -70,12 +70,15 @@ class TestMetadataAddition:
         data = f.get_data()
         md = data.get_metadata()
         
-        Attr = brim.Metadata.Item
-        md.add(
-            brim.Metadata.Type.Experiment,
-            {'Operator': 'Test User'},
-            local=False
-        )
+        with pytest.warns(UserWarning, match="Unknown field 'ExperimenterName'"):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'ExperimenterName': 'Test User'},
+                local=False,
+            )
+
+        retrieved = md['Experiment.ExperimenterName']
+        assert retrieved.value == 'Test User'
         f.close()
     
     def test_add_datetime_metadata(self, simple_brim_file):
@@ -228,11 +231,12 @@ class TestLocalVsGlobalMetadata:
         md = data.get_metadata()
         
         Attr = brim.Metadata.Item
-        md.add(
-            brim.Metadata.Type.Experiment,
-            {'LocalValue': Attr(100, 'units')},
-            local=True
-        )
+        with pytest.warns(UserWarning, match="Unknown field 'LocalValue'"):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'LocalValue': Attr(100, 'units')},
+                local=True
+            )
         
         # Should be retrievable from this data group
         local_val = md['Experiment.LocalValue']
@@ -248,4 +252,39 @@ class TestLocalVsGlobalMetadata:
         # Global metadata should be accessible
         wavelength = md['Optics.Wavelength']
         assert wavelength is not None
+        f.close()
+
+
+class TestMetadataValidationIntegration:
+    """Integration tests ensuring Metadata.add uses validation logic."""
+
+    def test_add_rejects_unknown_field_with_close_match(self, simple_brim_file):
+        """Typos close to schema names should raise instead of being silently accepted."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        with pytest.raises(ValueError, match='Did you mean'):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'Temprature': brim.Metadata.Item(25.0, 'C')},
+                local=True,
+            )
+        f.close()
+
+    def test_add_allows_normalized_field_name(self, simple_brim_file):
+        """Known fields are accepted even with non-canonical casing/separators."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        md.add(
+            brim.Metadata.Type.Experiment,
+            {'temperature': brim.Metadata.Item(23, 'C')},
+            local=True,
+        )
+
+        temp = md['Experiment.Temperature']
+        assert temp.value == 23.0
+        assert temp.units == 'C'
         f.close()

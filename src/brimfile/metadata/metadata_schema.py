@@ -12,7 +12,7 @@ class MetadataEnum(str, Enum):
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"] | Enum
-MetadataValue: TypeAlias = JSONScalar | MetadataEnum
+MetadataValue: TypeAlias = JSONValue
 
 @dataclass(frozen=True, slots=True)
 class MetadataField:
@@ -34,6 +34,18 @@ class MetadataField:
     enum_type: type[MetadataEnum] | None = None
     description: str = ""
 
+class MetadataItem:
+    # units should be a str. If None, no units is defined
+    def __init__(self, value: MetadataValue , units: str | None = None):
+        self.value = value
+        self.units = units
+
+    def __str__(self):
+        res = str(self.value)
+        if self.units is not None:
+            res += str(self.units)
+        return res
+    
 class Type(Enum):
     Experiment = 'Experiment'
     Optics = 'Optics'

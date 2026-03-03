@@ -250,7 +250,8 @@ class TestReadOnlyBehavior:
         
         # Should be able to add metadata
         Attr = brim.Metadata.Item
-        md.add(brim.Metadata.Type.Experiment, {'NewValue': Attr(100, 'units')}, local=True)
+        with pytest.warns(UserWarning, match="Unknown field 'NewValue'"):
+            md.add(brim.Metadata.Type.Experiment, {'NewValue': Attr(100, 'units')}, local=True)
         
         f.close()
 
@@ -339,7 +340,8 @@ class TestFileLifecycle:
         data = f.get_data()
         md = data.get_metadata()
         Attr = brim.Metadata.Item
-        md.add(brim.Metadata.Type.Experiment, {'Test': Attr(1, 'unit')}, local=True)
+        with pytest.warns(UserWarning, match="Unknown field 'Test'"):
+            md.add(brim.Metadata.Type.Experiment, {'Test': Attr(1, 'unit')}, local=True)
         f.close()
     
     def test_multiple_sequential_operations(self, tmp_path, sample_data):

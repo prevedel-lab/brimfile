@@ -1,7 +1,6 @@
 from ..file_abstraction import FileAbstraction, sync, _gather_sync
 from ..utils import concatenate_paths
-from . import metadata_schema
-from .metadata_schema import MetadataField, MetadataValue
+from . import metadata_schema, metadata_validation
 
 from .. import units
 from ..constants import brim_obj_names, reserved_attr_names
@@ -15,19 +14,7 @@ __docformat__ = "google"
 
 
 class Metadata:
-
-    class Item:
-        # units should be a str. If None, no units is defined
-        def __init__(self, value: MetadataValue , units: str | None = None):
-            self.value = value
-            self.units = units
-
-        def __str__(self):
-            res = str(self.value)
-            if self.units is not None:
-                res += str(self.units)
-            return res
-
+    Item = metadata_schema.MetadataItem
     Type = metadata_schema.Type
 
     @staticmethod
@@ -170,13 +157,13 @@ class Metadata:
 
         return out_dict
 
-    def add(self, type: Type, metadata: dict, local: bool = False):
+    def add(self, type: Type, metadata: dict[str, Item], local: bool = False):
         """
         Add metadata to the file.
         Call `brimfile.Metadata.metadata_class.print_schema()` to see the list of available metadata attributes and their description.
         Args:
             type (Type): The type of the metadata to add.
-            metadata (dict): A dictionary containing the metadata attributes to add.
+            metadata (dict[str, Item]): A dictionary containing the metadata attributes to add.
                             Each element must be of type Metadata.Item.
                             The keys of the dictionary are the names of the attributes.
             local (bool): If True, the metadata will be added to the data group. Otherwise, it will be added to the general metadata group.
@@ -186,25 +173,14 @@ class Metadata:
             raise ValueError(
                 "The current metadata object is not linked to a data group. Set local to False to add the metadata to the general metadata group.")
         if not local:
-            general_metadata = sync(self._load_general_metadata())
-        schema_fields = metadata_schema.METADATA_SCHEMA[type]
+            general_metadata = sync(self._load_general_metadata())        
         # iterate over the metadata dictionary and add each attribute
         for key, value in metadata.items():
             if not isinstance(value, Metadata.Item):
                 # if no units are provided, we assume None
                 value = Metadata.Item(value, None)
-
-            # Get the metadata field from the schema if it exists
-            field: MetadataField = next((f for f in schema_fields if f.name == key), None)
-            if field is not None and field.units_required and value.units is None:
-                raise ValueError(
-                    f"Metadata attribute {type.value}.{field.name} requires units."
-                )
-
+            key, value = metadata_validation.validate_single_field(type, key, value)
             val = value.value
-            # convert Enum to its value
-            if isinstance(val, Enum):
-                val = val.value
             if local:
                 group = self._data_path
                 name = f"{type.value}.{key}"
