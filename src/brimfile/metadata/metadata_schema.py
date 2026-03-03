@@ -141,6 +141,8 @@ METADATA_SCHEMA: dict[Type, tuple[MetadataField, ...]] = {
         MetadataField('Acquisition_time', float, required=True, units_required=True, description="the time that takes to acquire a single ‘unit’, which is different depending on the scanning strategy (i.e. point, line, plane, A-line, etc.)"),
     ),
     Type.Spectrometer: (
+        MetadataField('IRF', list[float], required=False, description="a 1D array containing the impulse response function of the spectrometer. It must have an attribute ‘Frequency’ [float] (with the corresponding ‘Frequency_units’ [string]) of the same length, containing the frequency axis."),
+        MetadataField('IRF_frequency', list[float], required=False, description="a 1D array containing the frequency axis for the IRF. It is required if the IRF is provided and must be of the same length as the IRF array. An attribute ‘IRF_frequency_units’ must also be defined."),
         MetadataField('Type', str, required=True, enum_type=SpectrometerType, description=""),
         MetadataField('Resolution', float, required=True, units_required=True, description=""),
         MetadataField('Detector_type', str, required=False, enum_type=DetectorType, description=""),
