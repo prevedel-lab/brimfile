@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import TypeAlias
 from dataclasses import dataclass
 import textwrap
 import shutil
@@ -9,10 +8,6 @@ __docformat__ = "google"
 
 class MetadataEnum(str, Enum):
     """Base enum type for metadata fields that have controlled vocabularies."""
-
-JSONScalar: TypeAlias = str | int | float | bool | None
-JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"] | Enum
-MetadataValue: TypeAlias = JSONValue
 
 @dataclass(frozen=True, slots=True)
 class MetadataField:
@@ -33,12 +28,6 @@ class MetadataField:
     units_required: bool = False
     enum_type: type[MetadataEnum] | None = None
     description: str = ""
-
-class MetadataItem:
-    # units should be a str. If None, no units is defined
-    def __init__(self, value: MetadataValue , units: str | None = None):
-        self.value = value
-        self.units = units
 
     def __str__(self):
         res = str(self.value)

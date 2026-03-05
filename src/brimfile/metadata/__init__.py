@@ -1,5 +1,5 @@
-from .metadata_class import Metadata
-from .metadata_schema import (
+from .main import Metadata
+from .schema import (
     ImmersionMedium, 
     SignalType, 
     PhononsMeasured, 

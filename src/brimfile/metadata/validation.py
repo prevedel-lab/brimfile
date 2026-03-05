@@ -7,48 +7,12 @@ from difflib import get_close_matches, SequenceMatcher
 from enum import Enum
 from numbers import Real
 from typing import Any, TypeVar
-from .metadata_schema import Type, MetadataEnum, MetadataField, METADATA_SCHEMA, MetadataItem, MetadataValue
+from .schema import Type, MetadataEnum, MetadataField, METADATA_SCHEMA
+from .types import MetadataItem, MetadataValue, MetadataItemValidity
 
 __docformat__ = "google"
 
 T = TypeVar('T')
-
-
-@dataclass(frozen=True, slots=True)
-class ValidationError:
-    """Single validation issue for a metadata field.
-
-    Attributes:
-        metadata_type: Metadata section where the error occurred.
-        field: Field name that failed validation.
-        message: Human-readable description of the validation failure.
-    """
-
-    metadata_type: Type | str
-    field: str
-    message: str
-
-
-class MetadataValidationError(ValueError):
-    """Raised when one or more metadata validation checks fail.
-
-    The ``errors`` attribute stores all collected ``ValidationError`` entries,
-    and the exception message provides a readable multi-line summary.
-    """
-
-    def __init__(self, errors: list[ValidationError]):
-        """Create an exception from a list of field validation errors.
-
-        Args:
-            errors: Collected validation errors.
-        """
-        self.errors = errors
-        body = '\n'.join(
-            f"- {err.metadata_type.value if isinstance(err.metadata_type, Type) else err.metadata_type}.{err.field}: {err.message}"
-            for err in errors
-        )
-        super().__init__(f"Metadata validation failed:\n{body}")
-
 
 def _normalize_token(value: str) -> str:
     """Normalize free-form tokens to a canonical snake-case key.
@@ -201,7 +165,8 @@ def _coerce_primitive(expected_type: type, value: Any) -> Any:
 def validate_single_field(
     metadata_type: Type,
     field_name: str,
-    value: MetadataItem
+    value: MetadataItem, *,
+    report_on_invalid: bool = False
 ) -> tuple[str, MetadataItem]:
     """Validate and normalize a single metadata field value.
 
@@ -209,14 +174,23 @@ def validate_single_field(
         metadata_type: Section to validate e.g. Experiment, Optics, etc... (``Type`` or string equivalent).
         field_name: Name of the field to validate.
         value: Input value for the field.
+        report_on_invalid: Whether to raise an exception or print a warning (depending on the severity) if the field is invalid.
     Returns:
-        A tuple of the canonical field name as a string and the coerced value as a MetadataItem.
-    Raises:
-        MetadataValidationError: If the field is invalid.
+        The canonical field name as a string, and the coerced value as a MetadataItem. The coerced value contains the validity field as well, which indicates whether the value is valid or not.
+        The original field name and value are returned if they are valid or the field name is not recognized but there are no close matches.
     """
+    validity : MetadataItemValidity = MetadataItemValidity.VALID
+
     # Get the metadata field from the schema if it exists
     field: MetadataField = next((f for f in METADATA_SCHEMA[metadata_type] if _normalize_token(f.name) == _normalize_token(field_name)), None)
     if field is not None:
+        if field.name != field_name:
+            validity = MetadataItemValidity.LIKELY_TYPO
+            if report_on_invalid:
+                # if the name is in the schema but it is not normalized, raise a warning to inform the user that we are normalizing the field name to the canonical name in the schema
+                warnings.warn(
+                    f"Field name '{field_name}' normalized to '{field.name}' for metadata type '{metadata_type.value}'."
+                )
         field_name = field.name  # use the canonical field name from the schema
     else:
         # the provided field_name is not in the schema, let's try to find close matches and suggest them in a warning
@@ -233,47 +207,45 @@ def validate_single_field(
         )
         suggested_names = [name for _, name, _ in close_matches]
         if suggested_names:
-            # if the name is not in the schema but there are close matches, raise an error with suggestions
-            # (it is likely that the user made a typo and we don't want to silently accept an unknown field name in this case)
-            raise ValueError(
-                f"Unknown field '{field_name}' for metadata type '{metadata_type.value}'. "
-                f"Did you mean {suggested_names}? "
-            )
-        else:
-            # if the name is not in the schema and there are no close matches, we can accept it 
-            # as it is likely that the user is trying to add a custom field that is not in the schema, but we will raise a warning to make sure they are aware that the field name is not recognized
-            warnings.warn(
-                f"Unknown field '{field_name}' for metadata type '{metadata_type.value}'."
-                f"Note that '{field_name}' was added to the metadata of the file nevertheless."
+            validity = MetadataItemValidity.LIKELY_TYPO
+            if report_on_invalid:
+                # if the name is not in the schema but there are close matches, raise an error with suggestions
+                # (it is likely that the user made a typo and we don't want to silently accept an unknown field name in this case)
+                raise ValueError(
+                    f"Unknown field '{field_name}' for metadata type '{metadata_type.value}'. "
+                    f"Did you mean {suggested_names}? "
                 )
+        else:
+            validity = MetadataItemValidity.UNKNOWN_FIELD
+            if report_on_invalid:
+                # if the name is not in the schema and there are no close matches, we can accept it 
+                # as it is likely that the user is trying to add a custom field that is not in the schema, but we will raise a warning to make sure they are aware that the field name is not recognized
+                warnings.warn(
+                    f"Unknown field '{field_name}' for metadata type '{metadata_type.value}'."
+                    f"Note that '{field_name}' was added to the metadata of the file nevertheless."
+                    )
     
     if field is not None and field.units_required and value.units is None:
-        raise ValueError(
-            f"Metadata attribute {metadata_type.value}.{field.name} requires units."
-        )
+        validity = MetadataItemValidity.MISSING_UNITS
+        if report_on_invalid:
+            raise ValueError(
+                f"Metadata attribute {metadata_type.value}.{field.name} requires units."
+            )
     coerced_value: MetadataValue = value.value
     if field is not None:
         if field.enum_type is not None:
             try:
                 coerced_value = _coerce_enum(field.enum_type, value.value)
             except (ValueError, TypeError) as e:
-                raise MetadataValidationError([
-                    ValidationError(
-                        metadata_type=metadata_type,
-                        field=field.name,
-                        message=str(e)
-                    )
-                ]) from e
+                validity = MetadataItemValidity.INVALID_VALUE
+                if report_on_invalid:
+                    raise ValueError(str(e)) from e
         else:
             try:
                 coerced_value = _coerce_primitive(field.python_type, value.value)
             except TypeError as e:
-                raise MetadataValidationError([
-                    ValidationError(
-                        metadata_type=metadata_type,
-                        field=field.name,
-                        message=str(e)
-                    )
-                ]) from e
+                validity = MetadataItemValidity.INVALID_VALUE
+                if report_on_invalid:
+                    raise ValueError(str(e)) from e
 
-    return field_name, MetadataItem(coerced_value, value.units)
+    return field_name, MetadataItem(coerced_value, value.units, validity=validity)

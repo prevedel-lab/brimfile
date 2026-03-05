@@ -100,6 +100,8 @@ if __name__ == "__main__":
     time.units
     temp = md['Experiment.Temperature']
     md_dict = md.to_dict(brim.Metadata.Type.Experiment)
+    # retrieve all the metadata, including validation and missing required fields
+    all_dict = md.all_to_dict(validate=True, include_missing=True)
 
 
     #get the list of analysis results in the data group

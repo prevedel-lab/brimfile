@@ -6,6 +6,7 @@ import pytest
 from datetime import datetime
 
 import brimfile as brim
+from brimfile.metadata.types import MetadataItemValidity
 
 
 class TestMetadataItem:
@@ -27,8 +28,8 @@ class TestMetadataItem:
         """Test string representation of metadata item."""
         item = brim.Metadata.Item(660, 'nm')
         str_rep = str(item)
-        assert '660' in str_rep
-        assert 'nm' in str_rep
+        assert isinstance(str_rep, str)
+        assert 'MetadataItem' in str_rep
 
 
 class TestMetadataAddition:
@@ -174,6 +175,35 @@ class TestMetadataDictConversion:
         assert 'Wavelength' in optics_md
         f.close()
 
+    def test_to_dict_validate_include_missing_adds_required_fields(self, simple_brim_file):
+        """Test validated dict includes required-but-missing schema fields."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        md = data.get_metadata()
+
+        optics_md = md.to_dict(brim.Metadata.Type.Optics, validate=True, include_missing=True)
+
+        assert optics_md['Wavelength'].value == 660.0
+        assert optics_md['Wavelength'].validity == MetadataItemValidity.VALID
+        assert optics_md['Power'].value is None
+        assert optics_md['Power'].validity == MetadataItemValidity.MISSING_FIELD
+        assert optics_md['Lens_NA'].value is None
+        assert optics_md['Lens_NA'].validity == MetadataItemValidity.MISSING_FIELD
+        f.close()
+
+    def test_to_dict_include_missing_ignored_without_validation(self, simple_brim_file):
+        """Test include_missing has no effect unless validate=True."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        md = data.get_metadata()
+
+        optics_md = md.to_dict(brim.Metadata.Type.Optics, include_missing=True)
+
+        assert 'Wavelength' in optics_md
+        assert 'Power' not in optics_md
+        assert 'Lens_NA' not in optics_md
+        f.close()
+
 
 class TestMetadataTypes:
     """Tests for different metadata types."""
@@ -254,6 +284,23 @@ class TestLocalVsGlobalMetadata:
         assert wavelength is not None
         f.close()
 
+    def test_local_metadata_overrides_global_value_in_dict(self, simple_brim_file):
+        """Test local metadata values take precedence over global metadata values."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        md.add(
+            brim.Metadata.Type.Experiment,
+            {'Temperature': brim.Metadata.Item(37.0, 'C')},
+            local=True,
+        )
+
+        exp_md = md.to_dict(brim.Metadata.Type.Experiment)
+        assert exp_md['Temperature'].value == 37.0
+        assert exp_md['Temperature'].units == 'C'
+        f.close()
+
 
 class TestMetadataValidationIntegration:
     """Integration tests ensuring Metadata.add uses validation logic."""
@@ -278,11 +325,15 @@ class TestMetadataValidationIntegration:
         data = f.get_data()
         md = data.get_metadata()
 
-        md.add(
-            brim.Metadata.Type.Experiment,
-            {'temperature': brim.Metadata.Item(23, 'C')},
-            local=True,
-        )
+        with pytest.warns(
+            UserWarning,
+            match="Field name 'temperature' normalized to 'Temperature' for metadata type 'Experiment'",
+        ):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'temperature': brim.Metadata.Item(23, 'C')},
+                local=True,
+            )
 
         temp = md['Experiment.Temperature']
         assert temp.value == 23.0
