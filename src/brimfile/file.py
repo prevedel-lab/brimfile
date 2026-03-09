@@ -9,6 +9,8 @@ from .constants import brim_obj_names
 from . import units
 
 from .file_abstraction import FileAbstraction, StoreType, sync
+from .validation import validate as validate_brim
+from .validation import ValidationError, ValidationLevel
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys
@@ -28,7 +30,9 @@ class File:
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
     else:
-        def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
+        def __init__(self, filename: str, mode: str = 'r',
+                     store_type: StoreType = StoreType.AUTO, * ,
+                     validate: bool = False) -> None:
             """
             Initialize the File object.
 
@@ -39,12 +43,29 @@ class File:
                             'r' means read only (must exist); 'r+' means read/write (must exist);
                             'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
                 store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
+                validate (bool): Whether to validate the file upon initialization. Default is False.
             """
             self._file = _AbstractFile(
                 filename, mode=mode, store_type=store_type)
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
-            
+            if validate:
+                validation_errors: list[ValidationError] = validate_brim(self._file._root)
+                for err in validation_errors:
+                    if err.level == ValidationLevel.WARNING or err.level == ValidationLevel.ERROR:
+                        warnings.warn(f"Validation warning at {err.path}: {err.message}")
+                    elif err.level == ValidationLevel.CRITICAL:
+                        raise ValueError(f"Validation error at {err.path}: {err.message}")
+
+    def validate(self) -> list[ValidationError]:
+        """
+        Validate the brim file and return a list of validation errors.
+
+        Returns:
+            list[ValidationError]: A list of validation errors found in the brim file. If the list is empty, the file is valid.
+        """
+        validation_errors: list[ValidationError] = validate_brim(self._file._root)
+        return validation_errors
     def __del__(self):
         try:
             if hasattr(self, '_file'):
