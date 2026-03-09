@@ -118,7 +118,7 @@ class File:
         except ValueError as e:
             raise ValueError(f"frequency (shape: {frequency.shape}) is not broadcastable to PSD (shape: {PSD.shape}): {e}")
         if len(px_size_um) != 3:
-            raise ValueError("'px_size_um' must have 3 elements (z,y,x); unused dimensions can be set to nan")
+            raise ValueError("'px_size_um' must have 3 elements (z,y,x); unused dimensions can be set to None")
 
         return self._create_data_group_raw(PSD, frequency, scanning = None, sparse = False, px_size_um=px_size_um, 
                                              index=index, name=name, compression=compression)
