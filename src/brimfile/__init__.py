@@ -336,8 +336,16 @@ ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filenam
 
 __version__ = "1.4.2"
 
-from .file import File
-from .data import Data
-from .analysis_results import AnalysisResults
-from .metadata import Metadata
-from .file_abstraction import StoreType
+import os
+# Default: normal imports enabled.
+# Override with env var: BRIMFILE_IMPORT_VALIDATION_ONLY=1
+_IMPORT_VALIDATION_ONLY = os.getenv("BRIMFILE_IMPORT_VALIDATION_ONLY", "").lower() in {
+    "1", "true", "yes"
+}
+
+if not _IMPORT_VALIDATION_ONLY:
+    from .file import File
+    from .data import Data
+    from .analysis_results import AnalysisResults
+    from .metadata import Metadata
+    from .file_abstraction import StoreType

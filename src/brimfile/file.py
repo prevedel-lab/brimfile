@@ -9,8 +9,8 @@ from .constants import brim_obj_names
 from . import units
 
 from .file_abstraction import FileAbstraction, StoreType, sync
-from .validation import validate as validate_brim
-from .validation import ValidationError, ValidationLevel
+from .validation import validate_json, ValidationError, ValidationLevel
+from.validation.json_descriptor import generate_json_descriptor
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys
@@ -50,7 +50,7 @@ class File:
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
             if validate:
-                validation_errors: list[ValidationError] = validate_brim(self._file._root)
+                validation_errors: list[ValidationError] = self.validate()
                 for err in validation_errors:
                     if err.level == ValidationLevel.WARNING or err.level == ValidationLevel.ERROR:
                         warnings.warn(f"Validation warning at {err.path}: {err.message}")
@@ -62,10 +62,13 @@ class File:
         Validate the brim file and return a list of validation errors.
 
         Returns:
-            list[ValidationError]: A list of validation errors found in the brim file. If the list is empty, the file is valid.
+            list[ValidationError]: A list of validation errors found in the brim file.
+            If the list is empty, the file is valid.
         """
-        validation_errors: list[ValidationError] = validate_brim(self._file._root)
+        json_descriptor = generate_json_descriptor(self._file._root)
+        validation_errors: list[ValidationError] = validate_json(json_descriptor)
         return validation_errors
+    
     def __del__(self):
         try:
             if hasattr(self, '_file'):

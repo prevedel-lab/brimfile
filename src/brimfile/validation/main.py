@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum
 import re
 
 from ..metadata.types import MetadataItem, MetadataItemValidity
