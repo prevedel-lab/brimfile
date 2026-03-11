@@ -118,11 +118,6 @@ class ZarrFile {
     const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return array.shape;
   }
-  async get_array_dtype(full_path){
-    await this.#wait_for_ready()
-    const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
-    return array.dtype;
-  }
 
   /******** Listing ********/
 
@@ -181,17 +176,13 @@ class ZarrFile {
 
     if (this.store_type == ZarrFile.StoreType.ZIP) {
       const entries = (await this.store.info).entries;
-      const all_objs = Object.keys(entries)
-      for (const key of all_objs) {
+      for (const key of Object.keys(entries)) {
         //console.log(key);
         if (key.startsWith(full_path)) {
           let obj = key.slice(full_path.length);
           obj = obj.split("/")[0];
-          if (!obj.endsWith('zarr.json') && !objects.includes(obj) && obj!=="") {
-            //check if it is a valid zarr object
-            if (all_objs.includes(full_path+obj+"/zarr.json")) {
-              objects.push(obj);
-              }
+          if (!obj.endsWith('zarr.json') && !objects.includes(obj)) {
+            objects.push(obj);
           }
         } 
       }
@@ -217,71 +208,11 @@ class ZarrFile {
     }
   }
 
-  async isArray(full_path) {
-    try {
-        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
-        return true;
-    } catch (error) {
-        return false;
-    }
-  }
-  async isGroup(full_path) {
-    try {
-        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "group" });
-        return true;
-    } catch (error) {
-        return false;
-    }
-  }
-
   async list_attributes(full_path) {
     await this.#wait_for_ready()
     full_path = standardize_path(full_path);
     const obj = await zarr.open.v3(this.root.resolve(full_path));
     return Object.keys(obj.attrs);
-  }
-
-  /******** Generating JSON descriptor ********/
-
-  async generateJsonDescriptor() {
-    // Recursive function to traverse zarr nodes
-    async function recurseNodes(zarr_file, path = '') {
-        const nodeDict = {};
-        
-        // Get attributes
-        nodeDict.attributes = {};
-        const attrs = await zarr_file.list_attributes(path);
-        for (const attr of attrs) {
-            nodeDict.attributes[attr] = await zarr_file.get_attribute(path, attr);
-        }
-        
-        // Check if it's a group or array
-        if (await zarr_file.isGroup(path)) {
-            // It's a group
-            nodeDict.node_type = 'group';
-            
-            // Recursively process children
-            const childs = await zarr_file.list_objects(path);
-            for (const child of childs) {
-                nodeDict[child] = await recurseNodes(zarr_file, path + '/' + child);
-            }
-        } else {
-            // It's an array
-            nodeDict.node_type = 'array';
-            nodeDict.shape = await zarr_file.get_array_shape(path);
-            nodeDict.dtype = await zarr_file.get_array_dtype(path);
-        }
-        
-        return nodeDict;
-    }
-    
-    // Generate the digest starting from root
-    const outDict = await recurseNodes(this);
-    
-    // Convert to JSON and log it
-    const jsonOutput = JSON.stringify(outDict, null, 4);
-    
-    return jsonOutput;
   }
 }
 
