@@ -80,7 +80,7 @@ class ZarrFile {
   is_ready() {
     return this.ready;
   };
-  async #wait_for_ready(timeout_ms = 200000) {
+  async #wait_for_ready(timeout_ms = 5000) {
     async function sleep(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -119,13 +119,19 @@ class ZarrFile {
   let rootName = "";
 
   for (const file of files) {
-    const fullPath = file.webkitRelativePath;
+    const fullPathRaw = file?.webkitRelativePath || file?.relativePath || file?.name || "";
+    // Remove leading slashes to ensure consistent path formatting
+    const fullPath = String(fullPathRaw).replace(/^\/+/, "");
+
+    if (!fullPath) {
+      throw new Error("Folder files must include a valid relative path");
+    }
 
     if (!rootName) {
       rootName = fullPath.split("/")[0];
     }
 
-    const relativePath = fullPath.split("/").slice(1).join("/");
+    const relativePath = fullPath.split("/").slice(1).join("/") || fullPath;
 
     fileMap.set(relativePath, file);
 
@@ -137,6 +143,10 @@ class ZarrFile {
         fileMap.set(dir, null);   
       }
     }
+  }
+
+  if (fileMap.size === 0) {
+    throw new Error("No files were found in the selected folder");
   }
 
   this.filename = rootName;
@@ -202,6 +212,7 @@ class ZarrFile {
     const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return array.shape;
   }
+
   async get_array_dtype(full_path){
     await this.#wait_for_ready()
     const array = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
@@ -283,18 +294,21 @@ class ZarrFile {
     else if (this.store_type == ZarrFile.StoreType.S3) {
       return this.#list_S3keys(full_path);
     }
-else if (this.store_type === ZarrFile.StoreType.FOLDER) {
-  const keys = await this.store.list();
-  for (const key of keys) {
-    if (key.startsWith(full_path)) {
-      let obj = key.slice(full_path.length);
-      obj = obj.split("/")[0];
-      if (!obj.endsWith('zarr.json') && !objects.includes(obj)) {
-        objects.push(obj);
+    else if (this.store_type === ZarrFile.StoreType.FOLDER) {
+      const all_objs = await this.store.list();
+      for (const key of all_objs) {
+        if (key.startsWith(full_path)) {
+          let obj = key.slice(full_path.length);
+          obj = obj.split("/")[0];
+          if (!obj.endsWith('zarr.json') && !objects.includes(obj) && obj!=="") {
+            //check if it is a valid zarr object
+            if (all_objs.includes(full_path+obj+"/zarr.json")) {
+              objects.push(obj);
+            }
+          }
+        }
       }
     }
-  }
-}
     else {
       throw new Error(this.store_type + ' is not supported!')
     }
@@ -381,19 +395,31 @@ else if (this.store_type === ZarrFile.StoreType.FOLDER) {
   }
 }
 
-// the function returns immediately but the returned ZarrFile instance is only valid
-// when .is_ready()==true
-function init_file(file) {
+/**
+ * Initializes a Zarr source from a ZIP file, a URL, or a folder file list.
+ *
+ * This function starts async initialization and returns immediately. The returned
+ * `zarr_file_js` instance is usable once `zarr_file_js.is_ready()` is `true`.
+ *
+ * @param {Array<File|string>|FileList} files Input source container. Supported forms:
+ * - `[File]` where `File.name` ends with `.zip`
+ * - `[string]` containing a URL/path to a Zarr root
+ * - folder-style file lists (`FileList`/array-like of `File` objects)
+ * @returns {{zarr_file_js: ZarrFile, filename: string}} Initialized wrapper object.
+ * @throws {Error} If `files` is not one of the supported input forms.
+ */
+function init_file(files) {
   let zarr_file = new ZarrFile();
   let filename = ""
-  if (file instanceof File) {
-    filename = file.name;
-    zarr_file.init(file).then(() => {
+
+  if (files.length === 1 && files[0] instanceof File && files[0].name.endsWith('.zip')) {
+    filename = files[0].name;
+    zarr_file.init(files[0]).then(() => {
       zarr_file.ready = true;
     });
   }
-  else if (typeof file == 'string') {
-    file = standardize_path(file);
+  else if (files.length === 1 && typeof files[0] == 'string') {
+    const file = standardize_path(files[0]);
     filename = file;
     //make sure the filename doesn't end with '/'
     if (filename.endsWith('/')) {
@@ -403,21 +429,24 @@ function init_file(file) {
       zarr_file.ready = true;
     });
   }
-  else if(typeof file.length === "number" && file.length > 1 )
+  else if(
+    files
+    && typeof files.length === "number"
+    && files.length > 0
+    && typeof files[0]?.arrayBuffer === "function"
+  )
 {
-  zarr_file.init_from_folder(file).then(() => {
+  zarr_file.init_from_folder(files).then(() => {
     zarr_file.ready = true;
   });
 
 }
   else {
-    throw new Error("'file' needs to be either a File object or a url")
+    throw new Error("'file' needs to be either a File object, a folder file list, or a url")
   }
   return {zarr_file_js: zarr_file, filename: filename};
 
 }
 
- 
- 
 
 export { ZarrFile, init_file}; 
