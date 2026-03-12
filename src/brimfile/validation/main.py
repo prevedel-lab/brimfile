@@ -97,6 +97,9 @@ def validate_metadata(metadata_type: MetadataType, metadata_dict: dict[str]) -> 
             errs.append(err)
     # check for missing required fields
     for field in METADATA_SCHEMA[metadata_type]:
+        if not field.required:
+            # only check for required fields, optional fields can be missing without causing an error
+            continue
         field_name = field.name
         if field_name not in metadata_dict:
             errs.append(ValidationError(
