@@ -1,0 +1,294 @@
+"""Unit tests for validation rules in brimfile.validation.main.
+
+The assertions in this file are derived from the BRIM specification:
+https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md
+"""
+
+import pytest
+
+from brimfile.validation.main import (
+    ValidationLevel,
+    ValidationType,
+    validate_analysis_group,
+    validate_data_group,
+)
+
+
+def _array(shape, *, dtype="float64", attributes=None):
+    return {
+        "node_type": "array",
+        "shape": tuple(shape),
+        "dtype": dtype,
+        "attributes": attributes or {},
+    }
+
+
+def _group(*, attributes=None, **children):
+    node = {"node_type": "group", "attributes": attributes or {}}
+    node.update(children)
+    return node
+
+
+def _analysis_group(*, result_shape, fit_model="Lorentzian"):
+    return _group(
+        attributes={"Fit_model": fit_model},
+        Shift_AS_0=_array(result_shape, attributes={"Units": "GHz"}),
+    )
+
+
+def _non_sparse_data_group(*, psd_shape=(2, 3, 4, 151), frequency_shape=(151,)):
+    return _group(
+        attributes={
+            "Sparse": False,
+            "element_size": [1.0, 1.0, 1.0],
+            "element_size_units": "um",
+        },
+        PSD=_array(psd_shape),
+        Frequency=_array(frequency_shape, attributes={"Units": "GHz"}),
+        Analysis_0=_analysis_group(result_shape=psd_shape[:-1]),
+    )
+
+
+def _sparse_data_group(*, psd_shape=(50, 151), frequency_shape=(151,), scanning=None):
+    if scanning is None:
+        scanning = _group(
+            Cartesian_visualisation=_array((5, 5, 2), dtype="int32")
+        )
+
+    return _group(
+        attributes={"Sparse": True},
+        PSD=_array(psd_shape),
+        Frequency=_array(frequency_shape, attributes={"Units": "GHz"}),
+        Scanning=scanning,
+        Analysis_0=_analysis_group(result_shape=psd_shape[:-1]),
+    )
+
+
+def _errors_matching(errors, *, err_type=None, level=None, path_contains=None):
+    matches = []
+    for err in errors:
+        if err_type is not None and err.type != err_type:
+            continue
+        if level is not None and err.level != level:
+            continue
+        if path_contains is not None and (err.path is None or path_contains not in err.path):
+            continue
+        matches.append(err)
+    return matches
+
+
+def test_validate_data_group_accepts_minimal_non_sparse_layout():
+    node = _non_sparse_data_group()
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    assert errors == []
+
+
+def test_validate_data_group_accepts_frequency_broadcasting():
+    node = _non_sparse_data_group(psd_shape=(2, 3, 4, 151), frequency_shape=(1, 1, 1, 151))
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    freq_shape_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_SHAPE,
+        path_contains="Frequency",
+    )
+    assert freq_shape_errors == []
+
+
+def test_validate_data_group_rejects_non_broadcastable_frequency_shape():
+    node = _non_sparse_data_group(psd_shape=(2, 3, 4, 151), frequency_shape=(2, 3, 5))
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    freq_shape_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_SHAPE,
+        level=ValidationLevel.CRITICAL,
+        path_contains="Frequency",
+    )
+    assert len(freq_shape_errors) == 1
+
+
+def test_validate_data_group_requires_scanning_group_for_sparse_data():
+    node = _group(
+        attributes={"Sparse": True},
+        PSD=_array((50, 151)),
+        Frequency=_array((151,), attributes={"Units": "GHz"}),
+        Analysis_0=_analysis_group(result_shape=(50,)),
+    )
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    scanning_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.MISSING_ARRAY,
+        level=ValidationLevel.CRITICAL,
+        path_contains="Data_0",
+    )
+    assert scanning_errors
+    assert any("Scanning" in err.message for err in scanning_errors)
+
+
+def test_validate_data_group_requires_spatial_map_or_cartesian_visualisation_when_sparse():
+    node = _sparse_data_group(scanning=_group())
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    scanning_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.MISSING_ARRAY,
+        level=ValidationLevel.CRITICAL,
+        path_contains="Scanning",
+    )
+    assert len(scanning_errors) == 1
+
+
+def test_validate_data_group_requires_3d_cartesian_visualisation():
+    node = _sparse_data_group(
+        scanning=_group(Cartesian_visualisation=_array((10, 5), dtype="int32"))
+    )
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    cart_shape_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_SHAPE,
+        level=ValidationLevel.CRITICAL,
+        path_contains="Cartesian_visualisation",
+    )
+    assert len(cart_shape_errors) == 1
+
+
+def test_validate_analysis_group_requires_fit_model_attribute():
+    node = _group(
+        attributes={},
+        Shift_AS_0=_array((2, 3, 4), attributes={"Units": "GHz"}),
+    )
+
+    errors = validate_analysis_group(node, path="Brillouin_data/Data_0/Analysis_0", PSD_shape=(2, 3, 4, 151))
+
+    fit_model_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.MISSING_ATTRIBUTE,
+        level=ValidationLevel.ERROR,
+        path_contains="Fit_model",
+    )
+    assert len(fit_model_errors) == 1
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Spec allows analysis arrays to match only spatial PSD dimensions; validator currently enforces PSD[:-1].",
+)
+def test_spec_allows_analysis_spatial_shape_when_psd_has_extra_parameter_axes():
+    # n_PSD = 5: Z, Y, X, parameter_0, frequency
+    # Put the quantity key first to avoid early-return key-order artifacts
+    # in the current validator implementation.
+    analysis_node = {
+        "Shift_AS_0": _array((2, 3, 4), attributes={"Units": "GHz"}),
+        "node_type": "group",
+        "attributes": {"Fit_model": "Lorentzian"},
+    }
+
+    errors = validate_analysis_group(
+        analysis_node,
+        path="Brillouin_data/Data_0/Analysis_0",
+        PSD_shape=(2, 3, 4, 7, 151),
+    )
+
+    shape_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_SHAPE,
+        path_contains="Shift_AS_0",
+    )
+    assert shape_errors == []
+
+
+def test_spec_parameters_shape_for_non_sparse_psd_with_extra_axes():
+    # n_PSD = 5 -> Parameters should have n_PSD-3 = 2 dims,
+    # with last dim size n_PSD-4 = 1.
+    node = _group(
+        attributes={
+            "Sparse": False,
+            "element_size": [1.0, 1.0, 1.0],
+            "element_size_units": "um",
+        },
+        PSD=_array((2, 3, 4, 7, 151)),
+        Frequency=_array((151,), attributes={"Units": "GHz"}),
+        Parameters=_array((7, 1), attributes={"Name": ["Angle_deg"]}),
+        Analysis_0=_analysis_group(result_shape=(2, 3, 4, 7)),
+    )
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    parameter_shape_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_SHAPE,
+        path_contains="Parameters",
+    )
+    assert parameter_shape_errors == []
+
+
+def test_element_size_units_is_required():
+    node = _group(
+        attributes={
+            "Sparse": False,
+            "element_size": [1.0, 1.0, 1.0],
+        },
+        PSD=_array((2, 3, 4, 151)),
+        Frequency=_array((151,), attributes={"Units": "GHz"}),
+        Analysis_0=_analysis_group(result_shape=(2, 3, 4)),
+    )
+
+    errors = validate_data_group(node, path="Brillouin_data/Data_0")
+
+    units_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.MISSING_ATTRIBUTE,
+        path_contains="element_size_units",
+    )
+    assert len(units_errors) == 1
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Spec defines Fit_model as enum; validator currently checks only presence.",
+)
+def test_spec_fit_model_must_match_allowed_enum_values():
+    errors = validate_analysis_group(
+        _analysis_group(result_shape=(2, 3, 4), fit_model="NotARealModel"),
+        path="Brillouin_data/Data_0/Analysis_0",
+        PSD_shape=(2, 3, 4, 151),
+    )
+
+    enum_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_VALUE,
+        path_contains="Fit_model",
+    )
+    assert len(enum_errors) == 1
+
+
+def test_analysis_quantity_validation_is_not_key_order_sensitive():
+    node = {
+        "node_type": "group",
+        "attributes": {"Fit_model": "Lorentzian"},
+        "Unrelated": _group(),
+        "Shift_AS_0": _group(),
+    }
+
+    errors = validate_analysis_group(
+        node,
+        path="Brillouin_data/Data_0/Analysis_0",
+        PSD_shape=(2, 3, 4, 151),
+    )
+
+    type_errors = _errors_matching(
+        errors,
+        err_type=ValidationType.INVALID_TYPE,
+        path_contains="Shift_AS_0",
+    )
+    assert len(type_errors) == 1
