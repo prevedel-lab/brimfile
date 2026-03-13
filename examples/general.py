@@ -45,6 +45,9 @@ if __name__ == "__main__":
 
     d0 = f.create_data_group(PSD, freq_GHz, (dz,dy,dx), name='test1')
 
+    # print all the available metadata fields and their description
+    brim.Metadata.print_schema(True)
+
     # Create the metadata
     Attr = brim.Metadata.Item
     datetime_now = datetime.now().isoformat()
@@ -53,6 +56,9 @@ if __name__ == "__main__":
 
     md.add(brim.Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp})
     md.add(brim.Metadata.Type.Optics, {'Wavelength':Attr(660, 'nm')})
+    # enums can be added using the enum value or the string representation of the enum member (case-insensitive and ignoring underscores and spaces)
+    md.add(brim.Metadata.Type.Brillouin, {'Signal_type': brim.metadata.SignalType.spontaneous, 
+                                          'Phonons_measured': 'longitudinal',})
     # Add some metadata to the local data group   
     temp = Attr(37.0, 'C')
     md.add(brim.Metadata.Type.Experiment, {'Temperature':temp}, local=True)
@@ -94,6 +100,8 @@ if __name__ == "__main__":
     time.units
     temp = md['Experiment.Temperature']
     md_dict = md.to_dict(brim.Metadata.Type.Experiment)
+    # retrieve all the metadata, including validation and missing required fields
+    all_dict = md.all_to_dict(validate=True, include_missing=True)
 
 
     #get the list of analysis results in the data group

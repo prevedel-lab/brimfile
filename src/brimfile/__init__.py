@@ -137,14 +137,17 @@ PSD, frequency, PSD_units, frequency_units = data.get_spectrum_in_image((pz,py,p
 
 ### Metadata
 
-You can then get a `brimfile.metadata.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
+You can then get a `brimfile.metadata.metadata_class.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
 The returned Metadata object contains all the metadata associated with the file and the data group.
 ```Python
 metadata = data.get_metadata()
 ```
-The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md).
+The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.metadata_class.Metadata.print_schema` method, which also allows to print the description of each metadata field:
+```Python
+Metadata.print_schema(include_description=True)
+```
 
-New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.Metadata.add` method.
+New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.metadata_class.Metadata.add` method.
 ```Python
 import datetime
 
@@ -158,7 +161,7 @@ A single metadata item can be retrieved by indexing the `Metadata` object, which
 ```Python
 datetime = metadata['Experiment.Datetime']
 ```
-A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.Metadata.all_to_dict` method.
+A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.metadata_class.Metadata.all_to_dict` method.
 ```Python
 metadata.all_to_dict()
 ```
@@ -333,8 +336,16 @@ ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filenam
 
 __version__ = "1.4.2"
 
-from .file import File
-from .data import Data
-from .analysis_results import AnalysisResults
-from .metadata import Metadata
-from .file_abstraction import StoreType
+import os
+# Default: normal imports enabled.
+# Override with env var: BRIMFILE_IMPORT_VALIDATION_ONLY=1
+_IMPORT_VALIDATION_ONLY = os.getenv("BRIMFILE_IMPORT_VALIDATION_ONLY", "").lower() in {
+    "1", "true", "yes"
+}
+
+if not _IMPORT_VALIDATION_ONLY:
+    from .file import File
+    from .data import Data
+    from .analysis_results import AnalysisResults
+    from .metadata import Metadata
+    from .file_abstraction import StoreType

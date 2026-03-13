@@ -1,11 +1,12 @@
-from .file_abstraction import FileAbstraction, sync, _gather_sync
-from .utils import concatenate_paths
+from ..file_abstraction import FileAbstraction, sync, _gather_sync
+from ..utils import concatenate_paths
+from . import schema, validation
+from .types import MetadataItem
 
-from . import units
-from .constants import brim_obj_names, reserved_attr_names
+from .. import units
+from ..constants import brim_obj_names, reserved_attr_names
 
 import warnings
-from enum import Enum
 
 import asyncio
 
@@ -13,25 +14,32 @@ __docformat__ = "google"
 
 
 class Metadata:
+    Item = MetadataItem
+    Type = schema.Type
 
-    class Item:
-        # units should be a str. If None, no units is defined
-        def __init__(self, value, units: str = None):
-            self.value = value
-            self.units = units
-
-        def __str__(self):
-            res = str(self.value)
-            if self.units is not None:
-                res += str(self.units)
-            return res
-
-    class Type(Enum):
-        Experiment = 'Experiment'
-        Optics = 'Optics'
-        Brillouin = 'Brillouin'
-        Acquisition = 'Acquisition'
-        Spectrometer = 'Spectrometer'
+    @staticmethod
+    def print_schema(
+        include_description: bool = True, *, 
+        description_width: int | None = None,
+        attr_width: int = 30,
+        type_width: int | None = None,
+        mandatory_width: int = 10
+    ) -> None:
+        """Print all metadata attributes defined in ``METADATA_SCHEMA``.
+        Args:
+            include_description: Whether to include the description column.
+            For other arguments, see `brimfile.metadata.schema.schema_as_string()`. They are passed to this function to allow configuring the output format when printing the metadata schema.
+        """
+        
+        print(
+            schema.schema_as_string(
+                include_description=include_description,
+                description_width=description_width,
+                attr_width=attr_width,
+                type_width=type_width,
+                mandatory_width=mandatory_width
+            )
+        )
 
     def __init__(self, file: FileAbstraction, data_full_path: str = None):
         """
@@ -45,6 +53,21 @@ class Metadata:
         self._general_metadata = None
         self._data_path = data_full_path
     
+    async def _load_local_metadata(self, type: Type) -> dict:
+        out_dict = {}
+        if self._data_path is not None:
+            attrs = await self._file.list_attributes(self._data_path)
+            group = f"{type.value}."
+            attrs = [attr for attr in attrs if attr.startswith(
+                group) and not attr.endswith('_units')]
+            coros_attrs = [self._file.get_attr(self._data_path, attr) for attr in attrs]
+            coros_units = [units.of_attribute(self._file, self._data_path, attr) for attr in attrs]
+            res = await asyncio.gather(*coros_attrs, *coros_units)
+            for i, attr in enumerate(attrs):
+                val = res[i]
+                u = res[i + len(attrs)]
+                out_dict[attr[len(group):]] = Metadata.Item(val, u)
+        return out_dict
     async def _load_general_metadata(self):
         if self._general_metadata is not None:
             return self._general_metadata   
@@ -97,17 +120,14 @@ class Metadata:
                 f"Group {group} not valid. It must be one of {list(Metadata.Type.__members__)}")
         return sync(self._get_single_item(Metadata.Type[group], obj))
 
-    def to_dict(self, type: Type) -> dict:
+    def to_dict(self, type: Type, *, 
+                validate: bool = False, include_missing: bool = False) -> dict:
         """
         Returns the metadata of a specific type as a dictionary. See doc of `to_dict_async`.
-        See `to_dict_async` for more details.
-        Args:
-            type (Type): The type of the metadata to retrieve.
-        Returns:
-            dict: A dictionary containing all metadata attributes, where each element is of the type Item.
         """
-        return sync(self.to_dict_async(type))
-    async def to_dict_async(self, type: Type) -> dict:
+        return sync(self.to_dict_async(type, validate=validate, include_missing=include_missing))
+    async def to_dict_async(self, type: Type, *, 
+                            validate: bool = False, include_missing: bool = False) -> dict | tuple[dict]:
         """
         Returns the metadata of a specific type as a dictionary.
         This method attempts to fetch a metadata attribute based on the specified type and name.
@@ -115,46 +135,49 @@ class Metadata:
         defined within that group. If not, it retrieves the metadata from the general metadata group.
         Args:
             type (Type): The type of the metadata to retrieve.
+            validate (bool): If True, validate the metadata against the schema.
+            include_missing (bool): If True and validate is True, include missing metadata attributes in the result. Missing attributes will have the value None. If validate is False, this argument is ignored and missing attributes are not included in the result.
         Returns:
             dict: A dictionary containing all metadata attributes, where each element is of the type Item.
         """
 
-        out_dict = {}
+        # load first the metadata defined locally in the data group (if the Metadata object is linked to a data group), as they take precedence over the general metadata
+        out_dict = await self._load_local_metadata(type)
+        local_attrs = tuple(out_dict.keys())
+        if validate:
+            # validate the local metadata first.
+            for key, value in out_dict.items():
+                _, out_dict[key] = validation.validate_single_field(type, key, value)
 
-        # if 'self' is linked to a specific data group, we first check if the metadata is defined in that group
-        local_attrs = []
-        if self._data_path is not None:
-            attrs = await self._file.list_attributes(self._data_path)
-            group = f"{type.value}."
-            attrs = [attr for attr in attrs if attr.startswith(
-                group) and not attr.endswith('_units')]
-            coros_attrs = [self._file.get_attr(self._data_path, attr) for attr in attrs]
-            coros_units = [units.of_attribute(self._file, self._data_path, attr) for attr in attrs]
-            res = await asyncio.gather(*coros_attrs, *coros_units)
-            for i, attr in enumerate(attrs):
-                val = res[i]
-                u = res[i + len(attrs)]
-                out_dict[attr[len(group):]] = Metadata.Item(val, u)
-            local_attrs = [attr[len(group):] for attr in attrs]
-
-        # otherwise we load the metadata from the metadata group
-        metadata_dict = await self._load_general_metadata()
-        metadata_dict = metadata_dict.get(type.value)
+        # then load the general metadata from the metadata group
+        global_metadata_dict = await self._load_general_metadata()
+        global_metadata_dict = global_metadata_dict.get(type.value)
         # remove the attributes that are already loaded from the data group or that are units attributes
-        attrs = [attr for attr in metadata_dict.keys() if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]
+        attrs = [attr for attr in global_metadata_dict.keys() if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]
         for attr in attrs:
-            val = metadata_dict.get(attr)
-            u = metadata_dict.get(f"{attr}_units", None)
-            out_dict[attr] = Metadata.Item(val, u)
+            val = global_metadata_dict.get(attr)
+            u = global_metadata_dict.get(f"{attr}_units", None)
+            res = Metadata.Item(val, u)
+            if validate:
+                _, res = validation.validate_single_field(type, attr, res)
+            out_dict[attr] = res
+
+        if validate and include_missing:
+            # include missing required attributes with value None
+            schema_attrs = [field.name for field in schema.METADATA_SCHEMA[type] if field.required]
+            for attr in schema_attrs:
+                if attr not in out_dict:
+                    out_dict[attr] = Metadata.Item(None, None, validity=validation.MetadataItemValidity.MISSING_FIELD)
 
         return out_dict
 
-    def add(self, type: Type, metadata: dict, local: bool = False):
+    def add(self, type: Type, metadata: dict[str, Item], local: bool = False):
         """
         Add metadata to the file.
+        Call `brimfile.Metadata.metadata_class.print_schema()` to see the list of available metadata attributes and their description.
         Args:
             type (Type): The type of the metadata to add.
-            metadata (dict): A dictionary containing the metadata attributes to add.
+            metadata (dict[str, Item]): A dictionary containing the metadata attributes to add.
                             Each element must be of type Metadata.Item.
                             The keys of the dictionary are the names of the attributes.
             local (bool): If True, the metadata will be added to the data group. Otherwise, it will be added to the general metadata group.
@@ -164,17 +187,14 @@ class Metadata:
             raise ValueError(
                 "The current metadata object is not linked to a data group. Set local to False to add the metadata to the general metadata group.")
         if not local:
-            general_metadata = sync(self._load_general_metadata())
+            general_metadata = sync(self._load_general_metadata())        
         # iterate over the metadata dictionary and add each attribute
         for key, value in metadata.items():
             if not isinstance(value, Metadata.Item):
-                # TODO: issue a warning if the specific metadata requires units and they are not provided
                 # if no units are provided, we assume None
-                value = Metadata.Item(value, None)            
+                value = Metadata.Item(value, None)
+            key, value = validation.validate_single_field(type, key, value, report_on_invalid=True)
             val = value.value
-            # convert Enum to its value
-            if isinstance(val, Enum):
-                val = val.value
             if local:
                 group = self._data_path
                 name = f"{type.value}.{key}"
@@ -189,75 +209,24 @@ class Metadata:
             self._general_metadata = general_metadata
             sync(self._file.create_attr(self._path, 'Metadata', general_metadata))
 
-    def all_to_dict(self) -> dict:
+    def all_to_dict(self, *, 
+                    validate: bool = False, include_missing: bool = False) -> dict:
         """
         Returns all the metadata as a dictionary.
         Returns:
             dict: A dictionary containing all the elements in Metadata.Type as a key.
                     Each of the key is defining a dictionary, as returned by Metadata.to_dict()
+            For `validate and `include_missing` arguments, see `Metadata.to_dict_async()`.
         """
         types = [type for type in Metadata.Type]
-        coros = [self.to_dict_async(type) for type in types]
+        coros = [self.to_dict_async(type, validate=validate, include_missing=include_missing) for type in types]
 
         #retrieve all metadata asynchronously
         res = _gather_sync(*coros)
         #assign them to a dictionary
         full_metadata = {type.name: dic for type, dic in zip(types, res)}
         return full_metadata
-
-    # -------------------- Enums definition --------------------
-    class ImmersionMedium(Enum):
-        other = 'other'
-        air = 'air'
-        water = 'water'
-        oil = 'oil'
-
-    class SignalType(Enum):
-        other = 'other'
-        spontaneous = 'spontaneous'
-        stimulated = 'stimulated'
-        time_resolved = 'time_resolved'
-
-    class PhononsMeasured(Enum):
-        other = 'other'
-        longitudinal = 'longitudinal-like'
-        transverse = 'transverse-like'
-        longitudinal_Transverse = 'longitudinal-transverse-like'
-
-    class PolarizationProbedAnalyzed(Enum):
-        other = 'other'
-        VH = 'VH'
-        HV = 'HV'
-        HH = 'HH'
-        VV = 'VV'
-        V_Unpolarized = 'V-unpolarized'
-        Circular_Circular = 'circular-circular'
-
-    class ScanningStrategy(Enum):
-        other = 'other'
-        point_scanning = 'point_scanning'
-        line_scanning = 'line_scanning'
-        light_sheet = 'light_sheet'
-        time_resolved = 'time_resolved'
-
-    class SpectrometerType(Enum):
-        other = 'other'
-        VIPA = 'VIPA'
-        FP = 'Fabry_Perot'
-        stimulated = 'stimulated'
-        heterodyne = 'heterodyne'
-        time_domain = 'time_domain'
-        impulsive = 'impulsive'
-
-    class DetectorType(Enum):
-        other = 'other'
-        EMCCD = 'EMCCD'
-        CCD = 'CCD'
-        sCMOS = 'sCMOS'
-        PMT = 'PMT'
-        balanced = 'balanced'
-        single_PD = 'single_PD'
-        single_APD = 'single_APD'
+    
 
 # utility functions to retrieve specific metadata attributes, with unit conversion if necessary. 
 

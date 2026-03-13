@@ -6,6 +6,7 @@ import pytest
 from datetime import datetime
 
 import brimfile as brim
+from brimfile.metadata.types import MetadataItemValidity
 
 
 class TestMetadataItem:
@@ -27,8 +28,8 @@ class TestMetadataItem:
         """Test string representation of metadata item."""
         item = brim.Metadata.Item(660, 'nm')
         str_rep = str(item)
-        assert '660' in str_rep
-        assert 'nm' in str_rep
+        assert isinstance(str_rep, str)
+        assert 'MetadataItem' in str_rep
 
 
 class TestMetadataAddition:
@@ -70,12 +71,15 @@ class TestMetadataAddition:
         data = f.get_data()
         md = data.get_metadata()
         
-        Attr = brim.Metadata.Item
-        md.add(
-            brim.Metadata.Type.Experiment,
-            {'Operator': 'Test User'},
-            local=False
-        )
+        with pytest.warns(UserWarning, match="Unknown field 'ExperimenterName'"):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'ExperimenterName': 'Test User'},
+                local=False,
+            )
+
+        retrieved = md['Experiment.ExperimenterName']
+        assert retrieved.value == 'Test User'
         f.close()
     
     def test_add_datetime_metadata(self, simple_brim_file):
@@ -171,6 +175,35 @@ class TestMetadataDictConversion:
         assert 'Wavelength' in optics_md
         f.close()
 
+    def test_to_dict_validate_include_missing_adds_required_fields(self, simple_brim_file):
+        """Test validated dict includes required-but-missing schema fields."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        md = data.get_metadata()
+
+        optics_md = md.to_dict(brim.Metadata.Type.Optics, validate=True, include_missing=True)
+
+        assert optics_md['Wavelength'].value == 660.0
+        assert optics_md['Wavelength'].validity == MetadataItemValidity.VALID
+        assert optics_md['Power'].value is None
+        assert optics_md['Power'].validity == MetadataItemValidity.MISSING_FIELD
+        assert optics_md['Lens_NA'].value is None
+        assert optics_md['Lens_NA'].validity == MetadataItemValidity.MISSING_FIELD
+        f.close()
+
+    def test_to_dict_include_missing_ignored_without_validation(self, simple_brim_file):
+        """Test include_missing has no effect unless validate=True."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        md = data.get_metadata()
+
+        optics_md = md.to_dict(brim.Metadata.Type.Optics, include_missing=True)
+
+        assert 'Wavelength' in optics_md
+        assert 'Power' not in optics_md
+        assert 'Lens_NA' not in optics_md
+        f.close()
+
 
 class TestMetadataTypes:
     """Tests for different metadata types."""
@@ -228,11 +261,12 @@ class TestLocalVsGlobalMetadata:
         md = data.get_metadata()
         
         Attr = brim.Metadata.Item
-        md.add(
-            brim.Metadata.Type.Experiment,
-            {'LocalValue': Attr(100, 'units')},
-            local=True
-        )
+        with pytest.warns(UserWarning, match="Unknown field 'LocalValue'"):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'LocalValue': Attr(100, 'units')},
+                local=True
+            )
         
         # Should be retrievable from this data group
         local_val = md['Experiment.LocalValue']
@@ -248,4 +282,60 @@ class TestLocalVsGlobalMetadata:
         # Global metadata should be accessible
         wavelength = md['Optics.Wavelength']
         assert wavelength is not None
+        f.close()
+
+    def test_local_metadata_overrides_global_value_in_dict(self, simple_brim_file):
+        """Test local metadata values take precedence over global metadata values."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        md.add(
+            brim.Metadata.Type.Experiment,
+            {'Temperature': brim.Metadata.Item(37.0, 'C')},
+            local=True,
+        )
+
+        exp_md = md.to_dict(brim.Metadata.Type.Experiment)
+        assert exp_md['Temperature'].value == 37.0
+        assert exp_md['Temperature'].units == 'C'
+        f.close()
+
+
+class TestMetadataValidationIntegration:
+    """Integration tests ensuring Metadata.add uses validation logic."""
+
+    def test_add_rejects_unknown_field_with_close_match(self, simple_brim_file):
+        """Typos close to schema names should raise instead of being silently accepted."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        with pytest.raises(ValueError, match='Did you mean'):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'Temprature': brim.Metadata.Item(25.0, 'C')},
+                local=True,
+            )
+        f.close()
+
+    def test_add_allows_normalized_field_name(self, simple_brim_file):
+        """Known fields are accepted even with non-canonical casing/separators."""
+        f = brim.File(simple_brim_file, mode='r+')
+        data = f.get_data()
+        md = data.get_metadata()
+
+        with pytest.warns(
+            UserWarning,
+            match="Field name 'temperature' normalized to 'Temperature' for metadata type 'Experiment'",
+        ):
+            md.add(
+                brim.Metadata.Type.Experiment,
+                {'temperature': brim.Metadata.Item(23, 'C')},
+                local=True,
+            )
+
+        temp = md['Experiment.Temperature']
+        assert temp.value == 23.0
+        assert temp.units == 'C'
         f.close()
