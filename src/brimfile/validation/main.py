@@ -557,44 +557,45 @@ def validate_Brillouin_data_group(node: dict) -> list[ValidationError]:
             path=path,
             message="The 'Brillouin_data' group must have attributes."
         ))
-    # validate the general metadata
-    if 'Metadata' not in attrs:
-        errs.append(ValidationError(
-            level=ValidationLevel.ERROR,
-            type=ValidationType.MISSING_ATTRIBUTE,
-            path=path,
-            message="The 'Brillouin_data' group must contain a 'Metadata' attribute."
-        ))
     else:
-        metadata_path = generate_attr_path(path, 'Metadata')
-        metadata = attrs['Metadata']
-        if not isinstance(metadata, dict):
+        # validate the general metadata
+        if 'Metadata' not in attrs:
             errs.append(ValidationError(
                 level=ValidationLevel.ERROR,
-                type=ValidationType.INVALID_TYPE,
-                path=metadata_path,
-                message=f"The 'Metadata' attribute must be a dictionary, found {type(metadata).__name__}."
+                type=ValidationType.MISSING_ATTRIBUTE,
+                path=path,
+                message="The 'Brillouin_data' group must contain a 'Metadata' attribute."
             ))
         else:
-            for md_type in MetadataType:
-                if md_type.value in metadata:
-                    md_dict = metadata[md_type.value]
-                    if not isinstance(md_dict, dict):
+            metadata_path = generate_attr_path(path, 'Metadata')
+            metadata = attrs['Metadata']
+            if not isinstance(metadata, dict):
+                errs.append(ValidationError(
+                    level=ValidationLevel.ERROR,
+                    type=ValidationType.INVALID_TYPE,
+                    path=metadata_path,
+                    message=f"The 'Metadata' attribute must be a dictionary, found {type(metadata).__name__}."
+                ))
+            else:
+                for md_type in MetadataType:
+                    if md_type.value in metadata:
+                        md_dict = metadata[md_type.value]
+                        if not isinstance(md_dict, dict):
+                            errs.append(ValidationError(
+                                level=ValidationLevel.ERROR,
+                                type=ValidationType.INVALID_TYPE,
+                                path=f"{metadata_path}.{md_type.value}",
+                                message=f"The '{md_type.value}' field in 'Metadata' must be a dictionary, found {type(md_dict).__name__}."
+                            ))
+                        else:
+                            errs.extend(validate_metadata(md_type, md_dict))
+                    else:
                         errs.append(ValidationError(
                             level=ValidationLevel.ERROR,
-                            type=ValidationType.INVALID_TYPE,
+                            type=ValidationType.MISSING_METADATA,
                             path=f"{metadata_path}.{md_type.value}",
-                            message=f"The '{md_type.value}' field in 'Metadata' must be a dictionary, found {type(md_dict).__name__}."
+                            message=f"The '{md_type.value}' field is missing in 'Metadata'."
                         ))
-                    else:
-                        errs.extend(validate_metadata(md_type, md_dict))
-                else:
-                    errs.append(ValidationError(
-                        level=ValidationLevel.ERROR,
-                        type=ValidationType.MISSING_METADATA,
-                        path=f"{metadata_path}.{md_type.value}",
-                        message=f"The '{md_type.value}' field is missing in 'Metadata'."
-                    ))
     # list the data groups in the Brillouin_data group and validate them
     data_groups: list[tuple[str, int]] = []
     for key in node.keys():
