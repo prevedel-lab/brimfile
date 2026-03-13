@@ -10,7 +10,7 @@ from . import units
 
 from .file_abstraction import FileAbstraction, StoreType, sync
 from .validation import validate_json, ValidationError, ValidationLevel
-from.validation.json_descriptor import generate_json_descriptor
+from .validation.json_descriptor import generate_json_descriptor
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys

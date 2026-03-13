@@ -29,12 +29,7 @@ class MetadataField:
     enum_type: type[MetadataEnum] | None = None
     description: str = ""
 
-    def __str__(self):
-        res = str(self.value)
-        if self.units is not None:
-            res += str(self.units)
-        return res
-    
+
 class Type(Enum):
     Experiment = 'Experiment'
     Optics = 'Optics'

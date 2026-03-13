@@ -222,7 +222,7 @@ def validate_single_field(
                 # as it is likely that the user is trying to add a custom field that is not in the schema, but we will raise a warning to make sure they are aware that the field name is not recognized
                 warnings.warn(
                     f"Unknown field '{field_name}' for metadata type '{metadata_type.value}'."
-                    f"Note that '{field_name}' was added to the metadata of the file nevertheless."
+                    f" Note that '{field_name}' was added to the metadata of the file nevertheless."
                     )
     
     if field is not None and field.units_required and value.units is None:

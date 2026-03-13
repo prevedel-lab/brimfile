@@ -301,7 +301,7 @@ def validate_data_group(node: dict, path: str) -> list[ValidationError]:
                 path=concatenate_paths(path, 'Frequency'),
                 message=f"The 'Frequency' array in the data group '{path}' must have a numeric dtype, found '{Frequency_dtype}'."
             ))
-        if Frequency_shape is not None:
+        if PSD_shape is not None and Frequency_shape is not None:
             try:
                 broadcast_shapes(PSD_shape, Frequency_shape)
             except ValueError as e:
@@ -492,7 +492,7 @@ def validate_data_group(node: dict, path: str) -> list[ValidationError]:
             level=ValidationLevel.WARNING,
             type=ValidationType.MISSING_GROUP,
             path=path,
-            message="No analysis group was found in {path}. The file is still valid but no image could be extracted from it."
+            message=f"No analysis group was found in {path}. The file is still valid but no image could be extracted from it."
         ))
     else:
         # validate each analysis group
