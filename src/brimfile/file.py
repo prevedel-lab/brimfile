@@ -65,7 +65,7 @@ class File:
             list[ValidationError]: A list of validation errors found in the brim file.
             If the list is empty, the file is valid.
         """
-        json_descriptor = generate_json_descriptor(self._file._root)
+        json_descriptor = generate_json_descriptor(self._file)
         validation_errors: list[ValidationError] = validate_json(json_descriptor)
         return validation_errors
     
