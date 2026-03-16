@@ -410,6 +410,8 @@ class TestAnalysisResults:
         # Check quantities dictionary
         assert quantities is not None
         assert isinstance(quantities, dict)
+        assert 'Elastic_contrast' in quantities
+        assert 'Viscous_contrast' in quantities
         
         # Quantities should contain the expected peak types as keys
         for peak_name in quantities:
@@ -450,6 +452,8 @@ class TestAnalysisResults:
         # Check quantities dictionary
         assert quantities is not None
         assert isinstance(quantities, dict)
+        assert 'Elastic_contrast' in quantities
+        assert 'Viscous_contrast' in quantities
         
         # Quantities should contain the expected peak types as keys
         for peak_name in quantities:

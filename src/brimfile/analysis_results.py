@@ -11,7 +11,7 @@ from .utils import var_to_singleton, concatenate_paths, get_object_name
 from .constants import brim_obj_names
 
 from .metadata import Metadata
-from .physics import Brillouin_shift_water
+from .physics import Brillouin_shift_water, Brillouin_width_water
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -32,6 +32,8 @@ class AnalysisResults:
         Shift = "Shift"
         # elastic contrast as defined in https://doi.org/10.1007/s12551-020-00701-9
         Elastic_contrast = "Elastic_contrast"
+        # viscous contrast as defined in https://doi.org/10.1007/s12551-020-00701-9
+        Viscous_contrast = "Viscous_contrast"
         Width = "Width"
         Amplitude = "Amplitude"
         Offset = "Offset"
@@ -217,7 +219,7 @@ class AnalysisResults:
         Returns:
             str | None: The units of the specified quantity as a string, or None if no units are defined.
         """
-        if qt == AnalysisResults.Quantity.Elastic_contrast:
+        if qt in (AnalysisResults.Quantity.Elastic_contrast, AnalysisResults.Quantity.Viscous_contrast):
             return None
         dt_name = AnalysisResults._get_quantity_name(qt, pt, index)
         full_path = concatenate_paths(self._path, dt_name)
@@ -236,7 +238,7 @@ class AnalysisResults:
         Returns:
             str: The units of the specified quantity as a string.
         """
-        if qt == AnalysisResults.Quantity.Elastic_contrast:
+        if qt in (AnalysisResults.Quantity.Elastic_contrast, AnalysisResults.Quantity.Viscous_contrast):
             raise ValueError(f"Units for {qt.name} are not settable because this quantity is computed on-the-fly.")
         dt_name = AnalysisResults._get_quantity_name(qt, pt, index)
         full_path = concatenate_paths(self._path, dt_name)
@@ -264,6 +266,29 @@ class AnalysisResults:
         except Exception as e:
             raise ValueError(
                 f"Could not compute Elastic_contrast from metadata ({e}).")
+
+    async def _compute_viscous_contrast_async(self, width):
+        width_arr = np.asarray(width)
+        try:
+            md = self._get_metadata()
+            coros = [md._get_wavelength_nm_async(), md._get_temperature_c_async(), md._get_scattering_angle_deg_async()]
+            res = await asyncio.gather(*coros, return_exceptions=True)
+            wavelength_nm, temperature_c, scattering_angle_deg = res
+            if isinstance(wavelength_nm, Exception):
+                raise ValueError("Could not retrieve the wavelength for computing Viscous Contrast.")
+            if isinstance(temperature_c, Exception):
+                temperature_c = 22  # default value
+                warnings.warn("Could not retrieve the temperature for computing Viscous Contrast. Using default value of 22 °C.")
+            if isinstance(scattering_angle_deg, Exception):
+                scattering_angle_deg = 180  # default value
+                warnings.warn("Could not retrieve the scattering angle for computing Viscous Contrast. Using default value of 180 deg.")
+            water_width = Brillouin_width_water(wavelength_nm, temperature_c, scattering_angle_deg)
+            if np.nanmean(width_arr) < 0:
+                water_width = -water_width
+            return width_arr / water_width - 1
+        except Exception as e:
+            raise ValueError(
+                f"Could not compute Viscous_contrast from metadata ({e}).")
 
     @property
     def fit_model(self) -> 'AnalysisResults.FitModel':
@@ -342,6 +367,9 @@ class AnalysisResults:
         if qt == AnalysisResults.Quantity.Elastic_contrast:
             shift_img, px_size = self.get_image(AnalysisResults.Quantity.Shift, pt, index)
             return sync(self._compute_elastic_contrast_async(shift_img)), px_size
+        if qt == AnalysisResults.Quantity.Viscous_contrast:
+            width_img, px_size = self.get_image(AnalysisResults.Quantity.Width, pt, index)
+            return sync(self._compute_viscous_contrast_async(width_img)), px_size
 
         pt_type = AnalysisResults.PeakType
         data = None
@@ -392,6 +420,9 @@ class AnalysisResults:
         if qt == AnalysisResults.Quantity.Elastic_contrast:
             shift_value = await self.get_quantity_at_pixel_async(coord, AnalysisResults.Quantity.Shift, pt, index)
             return await self._compute_elastic_contrast_async(shift_value)
+        if qt == AnalysisResults.Quantity.Viscous_contrast:
+            width_value = await self.get_quantity_at_pixel_async(coord, AnalysisResults.Quantity.Width, pt, index)
+            return await self._compute_viscous_contrast_async(width_value)
         if self._sparse:
             i = self._spatial_map[*coord]
             assert i.size == 1
@@ -458,7 +489,7 @@ class AnalysisResults:
             qts_ls = ()
             dts_ls = ()
 
-            qts = [qt for qt in as_cls.Quantity if qt is not as_cls.Quantity.Elastic_contrast]
+            qts = [qt for qt in as_cls.Quantity if qt not in (as_cls.Quantity.Elastic_contrast, as_cls.Quantity.Viscous_contrast)]
             coros = [self._file.open_dataset(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index_peak))) for qt in qts]
             
             # open the datasets asynchronously, excluding those that do not exist
@@ -509,6 +540,13 @@ class AnalysisResults:
             for pt_name, item in res[AnalysisResults.Quantity.Shift.name].items():
                 ec = await self._compute_elastic_contrast_async(item.value)
                 res[ec_name][pt_name] = Metadata.Item(ec, None)
+
+        if AnalysisResults.Quantity.Width.name in res:
+            vc_name = AnalysisResults.Quantity.Viscous_contrast.name
+            res[vc_name] = {}
+            for pt_name, item in res[AnalysisResults.Quantity.Width.name].items():
+                vc = await self._compute_viscous_contrast_async(item.value)
+                res[vc_name][pt_name] = Metadata.Item(vc, None)
         return res
 
     @classmethod
@@ -523,8 +561,8 @@ class AnalysisResults:
         """
         if not pt in (cls.PeakType.AntiStokes, cls.PeakType.Stokes):
             raise ValueError("pt has to be either Stokes or AntiStokes")
-        if qt == cls.Quantity.Elastic_contrast:
-            raise ValueError("Elastic_contrast is a computed quantity and is not stored in the file.")
+        if qt in (cls.Quantity.Elastic_contrast, cls.Quantity.Viscous_contrast):
+            raise ValueError(f"{qt.value} is a computed quantity and is not stored in the file.")
         if qt == cls.Quantity.R2 or qt == cls.Quantity.RMSE or qt == cls.Quantity.Cov_matrix:
             name = f"Fit_error_{str(pt.value)}_{index}/{str(qt.value)}"
         else:
@@ -594,7 +632,7 @@ class AnalysisResults:
         as_cls = AnalysisResults
         ls = ()
 
-        qts = [qt for qt in as_cls.Quantity if qt is not as_cls.Quantity.Elastic_contrast]
+        qts = [qt for qt in as_cls.Quantity if qt not in (as_cls.Quantity.Elastic_contrast, as_cls.Quantity.Viscous_contrast)]
         coros = [self._file.object_exists(concatenate_paths(self._path, as_cls._get_quantity_name(qt, pt, index))) for qt in qts]
         
         qt_exists = await asyncio.gather(*coros)
@@ -603,4 +641,6 @@ class AnalysisResults:
                 ls += (qts[i],)
         if as_cls.Quantity.Shift in ls:
             ls += (as_cls.Quantity.Elastic_contrast,)
+        if as_cls.Quantity.Width in ls:
+            ls += (as_cls.Quantity.Viscous_contrast,)
         return ls

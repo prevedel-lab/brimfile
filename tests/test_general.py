@@ -105,6 +105,7 @@ def test_general(tmp_path):
     # list the existing peak types and quantities in the analysis results
     pt = ar.list_existing_peak_types()
     qt = ar.list_existing_quantities()
+    assert brim.Data.AnalysisResults.Quantity.Viscous_contrast in qt
     # get the image of the shift quantity for the average of the Stokes and anti-Stokes peaks
     img, px_size = ar.get_image(brim.Data.AnalysisResults.Quantity.Shift, brim.Data.AnalysisResults.PeakType.average)
     # get the units of the shift quantity

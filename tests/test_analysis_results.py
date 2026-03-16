@@ -6,7 +6,7 @@ Unit tests for the AnalysisResults class in brimfile.
 import numpy as np
 
 import brimfile as brim
-from brimfile.physics import Brillouin_shift_water
+from brimfile.physics import Brillouin_shift_water, Brillouin_width_water
 
 
 class TestAnalysisResultsProperties:
@@ -63,6 +63,7 @@ class TestPeakTypesAndQuantities:
         assert len(quantities) > 0
         assert isinstance(quantities[0], brim.Data.AnalysisResults.Quantity)
         assert brim.Data.AnalysisResults.Quantity.Elastic_contrast in quantities
+        assert brim.Data.AnalysisResults.Quantity.Viscous_contrast in quantities
         f.close()
     
     def test_peak_type_enum_values(self):
@@ -78,6 +79,7 @@ class TestPeakTypesAndQuantities:
         assert Quantity.Shift is not None
         assert Quantity.Width is not None
         assert Quantity.Elastic_contrast is not None
+        assert Quantity.Viscous_contrast is not None
 
 
 class TestImageRetrieval:
@@ -129,6 +131,22 @@ class TestImageRetrieval:
 
         water_shift = Brillouin_shift_water(660, 22, 180)
         np.testing.assert_allclose(img_ec, img_shift / water_shift - 1)
+        f.close()
+
+    def test_get_image_viscous_contrast(self, simple_brim_file):
+        """Test getting viscous contrast image computed from width."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        PeakType = brim.Data.AnalysisResults.PeakType
+
+        img_width, _ = ar.get_image(Quantity.Width, PeakType.average)
+        img_vc, _ = ar.get_image(Quantity.Viscous_contrast, PeakType.average)
+
+        water_width = Brillouin_width_water(660, 22, 180)
+        np.testing.assert_allclose(img_vc, img_width / water_width - 1)
         f.close()
     
     def test_image_dimensions(self, simple_brim_file, sample_data):
@@ -186,6 +204,18 @@ class TestUnitsRetrieval:
 
         Quantity = brim.Data.AnalysisResults.Quantity
         units = ar.get_units(Quantity.Elastic_contrast)
+
+        assert units is None
+        f.close()
+
+    def test_get_units_viscous_contrast(self, simple_brim_file):
+        """Test getting units for viscous contrast quantity."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        units = ar.get_units(Quantity.Viscous_contrast)
 
         assert units is None
         f.close()
@@ -257,6 +287,23 @@ class TestPixelQuantityRetrieval:
 
         water_shift = Brillouin_shift_water(660, 22, 180)
         np.testing.assert_allclose(ec, shift / water_shift -1)
+        f.close()
+
+    def test_get_viscous_contrast_at_pixel(self, simple_brim_file):
+        """Test getting viscous contrast at pixel as width-normalized value."""
+        f = brim.File(simple_brim_file)
+        data = f.get_data()
+        ar = data.get_analysis_results()
+
+        Quantity = brim.Data.AnalysisResults.Quantity
+        PeakType = brim.Data.AnalysisResults.PeakType
+
+        coord = (1, 3, 4)
+        width = ar.get_quantity_at_pixel(coord, Quantity.Width, PeakType.average)
+        vc = ar.get_quantity_at_pixel(coord, Quantity.Viscous_contrast, PeakType.average)
+
+        water_width = Brillouin_width_water(660, 22, 180)
+        np.testing.assert_allclose(vc, width / water_width -1)
         f.close()
 
 
@@ -475,6 +522,8 @@ class TestGetAllQuantitiesInImage:
         # Check return structure
         assert quantities is not None
         assert isinstance(quantities, dict)
+        assert 'Elastic_contrast' in quantities
+        assert 'Viscous_contrast' in quantities
         
         # Each quantity should have a nested dictionary with peak types
         for qty_name in quantities:
