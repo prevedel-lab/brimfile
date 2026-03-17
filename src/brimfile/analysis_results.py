@@ -10,6 +10,8 @@ from . import units
 from .utils import var_to_singleton, concatenate_paths, get_object_name
 from .constants import brim_obj_names
 
+from .fitting_models import FitModel
+
 from .metadata import Metadata
 from .physics import Brillouin_shift_water, Brillouin_width_water
 
@@ -46,13 +48,7 @@ class AnalysisResults:
         Stokes = "S"
         average = "avg"
     
-    class FitModel(Enum):
-        Undefined = "Undefined"
-        Lorentzian = "Lorentzian"
-        DHO = "DHO"
-        Gaussian = "Gaussian"
-        Voigt = "Voigt"
-        Custom = "Custom"
+    FitModel = FitModel
 
     def __init__(self, file: FileAbstraction, full_path: str, *, data_group_path: str,
                     spatial_map = None, spatial_map_px_size = None, sparse: bool = False):
