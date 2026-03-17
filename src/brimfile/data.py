@@ -241,13 +241,17 @@ class Data:
 
         return PSD, frequency, PSD_units, frequency_units
     
-    def get_PSD_as_spatial_map(self) -> tuple:
+    def get_PSD_as_spatial_map(self, *, broadcast_frequency: bool = True) -> tuple:
         """
         Retrieve the Power Spectral Density (PSD) as a spatial map and the frequency from the current data group.
+        Arguments:
+            broadcast_frequency (bool): Whether to broadcast the frequency array to match the shape of the PSD if they have different shapes. 
+                This is useful when the frequency is the same for all spectra and thus stored as a 1D array, while the PSD has a spatial dimension. 
+                If False, the function will return a 1D array for the frequency, if the frequency is the same for all spectra.
         Returns:
             tuple: (PSD, frequency, PSD_units, frequency_units)
                 - PSD: A 4D (or more) numpy array containing all the spectra. Dimensions are z, y, x, [parameters], spectrum.
-                - frequency: A numpy array representing the frequency data, which can be broadcastable to PSD.
+                - frequency: A numpy array representing the frequency data, which has the same shape as PSD or a 1D array (see `broadcast_frequency`).
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
@@ -267,15 +271,16 @@ class Data:
         PSD = np.array(PSD)  
         frequency = np.array(frequency)  # ensure it's a numpy array
         
-        #if the frequency is not the same for all spectra, broadcast it to match the shape of PSD
-        if frequency.ndim > 1:
+        # if the frequency is not the same for all spectra, broadcast it to match the shape of PSD
+        # if it is the same for all spectra, broadcast_frequency determines whether to return it as a 1D array or broadcast it to match the shape of PSD
+        if frequency.ndim > 1 or (broadcast_frequency and frequency.shape != PSD.shape):
             frequency = np.broadcast_to(frequency, PSD.shape)
         
         if self._sparse:
             if self._spatial_map is None:
                 raise ValueError("The data is defined as sparse, but no spatial mapping is provided.")
             sm = np.array(self._spatial_map)
-            # reshape the PSD to have the spatial dimensions first      
+            # reshape the PSD and frequency to have the spatial dimensions first      
             PSD = PSD[sm, ...]
             # reshape the frequency only if it is not the same for all spectra
             if frequency.ndim > 1:
