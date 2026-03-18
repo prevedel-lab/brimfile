@@ -1,7 +1,7 @@
 from ..file_abstraction import FileAbstraction, sync, _gather_sync
 from ..utils import concatenate_paths
 from . import schema, validation
-from .types import MetadataItem
+from .types import MetadataItem, MetadataValue
 
 from .. import units
 from ..constants import brim_obj_names, reserved_attr_names
@@ -9,6 +9,8 @@ from ..constants import brim_obj_names, reserved_attr_names
 import warnings
 
 import asyncio
+from typing import Any
+from enum import Enum
 
 __docformat__ = "google"
 
@@ -41,7 +43,7 @@ class Metadata:
             )
         )
 
-    def __init__(self, file: FileAbstraction, data_full_path: str = None):
+    def __init__(self, file: FileAbstraction, data_full_path: str | None = None) -> None:
         """
         Initialize the Metadata object.
         Args:
@@ -50,14 +52,14 @@ class Metadata:
         """
         self._file = file
         self._path = brim_obj_names.Brillouin_base_path
-        self._general_metadata = None
+        self._general_metadata: dict[str, dict[str, MetadataValue]] | None = None
         self._data_path = data_full_path
     
-    async def _load_local_metadata(self, type: Type) -> dict:
-        out_dict = {}
+    async def _load_local_metadata(self, metadata_type: schema.Type) -> dict[str, MetadataItem]:
+        out_dict: dict[str, MetadataItem] = {}
         if self._data_path is not None:
             attrs = await self._file.list_attributes(self._data_path)
-            group = f"{type.value}."
+            group = f"{metadata_type.value}."
             attrs = [attr for attr in attrs if attr.startswith(
                 group) and not attr.endswith('_units')]
             coros_attrs = [self._file.get_attr(self._data_path, attr) for attr in attrs]
@@ -68,20 +70,36 @@ class Metadata:
                 u = res[i + len(attrs)]
                 out_dict[attr[len(group):]] = Metadata.Item(val, u)
         return out_dict
-    async def _load_general_metadata(self):
+
+    async def _load_general_metadata(self) -> dict[str, dict[str, MetadataValue]]:
         if self._general_metadata is not None:
             return self._general_metadata   
-        metadata_dict = {}
+        metadata_dict: dict[str, dict[str, MetadataValue]] = {}
         try:
-            metadata_dict = await self._file.get_attr(self._path, 'Metadata')
+            loaded_metadata = await self._file.get_attr(self._path, 'Metadata')
+            if isinstance(loaded_metadata, dict):
+                normalized_metadata: dict[str, dict[str, MetadataValue]] = {}
+                for section_name, section_value in loaded_metadata.items():
+                    if not isinstance(section_name, str) or not isinstance(section_value, dict):
+                        continue
+                    normalized_section: dict[str, MetadataValue] = {}
+                    for k, v in section_value.items():
+                        if isinstance(k, str):
+                            normalized_section[k] = v
+                    normalized_metadata[section_name] = normalized_section
+                metadata_dict = normalized_metadata
         except Exception:
             # if the metadata group does not exist, create it
-            for type in Metadata.Type:
-                metadata_dict[type.value] = {}
+            for metadata_type in Metadata.Type:
+                metadata_dict[metadata_type.value] = {}
             await self._file.create_attr(self._path, 'Metadata', metadata_dict)
+        for metadata_type in Metadata.Type:
+            if metadata_type.value not in metadata_dict or not isinstance(metadata_dict[metadata_type.value], dict):
+                metadata_dict[metadata_type.value] = {}
         self._general_metadata = metadata_dict
         return metadata_dict
-    async def _get_single_item(self, type: Type, name: str) -> Item:
+
+    async def _get_single_item(self, metadata_type: schema.Type, name: str) -> MetadataItem:
         """
         Retrieve a single metadata.
         This method attempts to fetch a metadata attribute based on the specified type and name.
@@ -97,13 +115,13 @@ class Metadata:
                        data group or the general metadata group.
         """
 
-        metadata_dict = await self.to_dict_async(type)
+        metadata_dict = await self.to_dict_async(metadata_type)
         if name not in metadata_dict:
             raise KeyError(
-                f"Metadata attribute {type.value}.{name} not found.")
-        return metadata_dict.get(name)
+            f"Metadata attribute {metadata_type.value}.{name} not found.")
+        return metadata_dict[name]
 
-    def __getitem__(self, key: str) -> Item:
+    def __getitem__(self, key: str) -> MetadataItem:
         """
         Get the metadata for a specific key.
         Args:
@@ -120,14 +138,15 @@ class Metadata:
                 f"Group {group} not valid. It must be one of {list(Metadata.Type.__members__)}")
         return sync(self._get_single_item(Metadata.Type[group], obj))
 
-    def to_dict(self, type: Type, *, 
-                validate: bool = False, include_missing: bool = False) -> dict:
+    def to_dict(self, metadata_type: schema.Type, *,
+                validate: bool = False, include_missing: bool = False) -> dict[str, MetadataItem]:
         """
         Returns the metadata of a specific type as a dictionary. See doc of `to_dict_async`.
         """
-        return sync(self.to_dict_async(type, validate=validate, include_missing=include_missing))
-    async def to_dict_async(self, type: Type, *, 
-                            validate: bool = False, include_missing: bool = False) -> dict | tuple[dict]:
+        return sync(self.to_dict_async(metadata_type, validate=validate, include_missing=include_missing))
+
+    async def to_dict_async(self, metadata_type: schema.Type, *,
+                            validate: bool = False, include_missing: bool = False) -> dict[str, MetadataItem]:
         """
         Returns the metadata of a specific type as a dictionary.
         This method attempts to fetch a metadata attribute based on the specified type and name.
@@ -142,36 +161,37 @@ class Metadata:
         """
 
         # load first the metadata defined locally in the data group (if the Metadata object is linked to a data group), as they take precedence over the general metadata
-        out_dict = await self._load_local_metadata(type)
+        out_dict = await self._load_local_metadata(metadata_type)
         local_attrs = tuple(out_dict.keys())
         if validate:
             # validate the local metadata first.
             for key, value in out_dict.items():
-                _, out_dict[key] = validation.validate_single_field(type, key, value)
+                _, out_dict[key] = validation.validate_single_field(metadata_type, key, value)
 
         # then load the general metadata from the metadata group
-        global_metadata_dict = await self._load_general_metadata()
-        global_metadata_dict = global_metadata_dict.get(type.value)
+        full_global_metadata_dict = await self._load_general_metadata()
+        global_metadata_dict_for_type = full_global_metadata_dict.get(metadata_type.value, {})
         # remove the attributes that are already loaded from the data group or that are units attributes
-        attrs = [attr for attr in global_metadata_dict.keys() if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]
+        attrs = [attr for attr in global_metadata_dict_for_type.keys() if not (attr in local_attrs or attr.endswith('_units') or attr in reserved_attr_names)]
         for attr in attrs:
-            val = global_metadata_dict.get(attr)
-            u = global_metadata_dict.get(f"{attr}_units", None)
+            val = global_metadata_dict_for_type.get(attr)
+            units_value = global_metadata_dict_for_type.get(f"{attr}_units", None)
+            u = units_value if isinstance(units_value, str) else None
             res = Metadata.Item(val, u)
             if validate:
-                _, res = validation.validate_single_field(type, attr, res)
+                _, res = validation.validate_single_field(metadata_type, attr, res)
             out_dict[attr] = res
 
         if validate and include_missing:
             # include missing required attributes with value None
-            schema_attrs = [field.name for field in schema.METADATA_SCHEMA[type] if field.required]
+            schema_attrs = [field.name for field in schema.METADATA_SCHEMA[metadata_type] if field.required]
             for attr in schema_attrs:
                 if attr not in out_dict:
                     out_dict[attr] = Metadata.Item(None, None, validity=validation.MetadataItemValidity.MISSING_FIELD)
 
         return out_dict
 
-    def add(self, type: Type, metadata: dict[str, Item], local: bool = False):
+    def add(self, metadata_type: schema.Type, metadata: dict[str, MetadataItem], local: bool = False) -> None:
         """
         Add metadata to the file.
         Call `brimfile.Metadata.metadata_class.print_schema()` to see the list of available metadata attributes and their description.
@@ -193,24 +213,24 @@ class Metadata:
             if not isinstance(value, Metadata.Item):
                 # if no units are provided, we assume None
                 value = Metadata.Item(value, None)
-            key, value = validation.validate_single_field(type, key, value, report_on_invalid=True)
+            key, value = validation.validate_single_field(metadata_type, key, value, report_on_invalid=True)
             val = value.value
             if local:
                 group = self._data_path
-                name = f"{type.value}.{key}"
+                name = f"{metadata_type.value}.{key}"
                 sync(self._file.create_attr(group, name, val))
                 if value.units is not None:
                     units.add_to_attribute(self._file, group, name, value.units)
             else:
-                general_metadata[type.value][key] = val
+                general_metadata[metadata_type.value][key] = val
                 if value.units is not None:
-                    general_metadata[type.value][f"{key}_units"] = value.units
+                    general_metadata[metadata_type.value][f"{key}_units"] = value.units
         if not local:
             self._general_metadata = general_metadata
             sync(self._file.create_attr(self._path, 'Metadata', general_metadata))
 
-    def all_to_dict(self, *, 
-                    validate: bool = False, include_missing: bool = False) -> dict:
+    def all_to_dict(self, *,
+                    validate: bool = False, include_missing: bool = False) -> dict[str, dict[str, MetadataItem]]:
         """
         Returns all the metadata as a dictionary.
         Returns:
@@ -218,14 +238,22 @@ class Metadata:
                     Each of the key is defining a dictionary, as returned by Metadata.to_dict()
             For `validate and `include_missing` arguments, see `Metadata.to_dict_async()`.
         """
-        types = [type for type in Metadata.Type]
-        coros = [self.to_dict_async(type, validate=validate, include_missing=include_missing) for type in types]
+        metadata_types = [metadata_type for metadata_type in Metadata.Type]
+        coros = [self.to_dict_async(metadata_type, validate=validate, include_missing=include_missing) for metadata_type in metadata_types]
 
         #retrieve all metadata asynchronously
         res = _gather_sync(*coros)
         #assign them to a dictionary
-        full_metadata = {type.name: dic for type, dic in zip(types, res)}
+        full_metadata = {metadata_type.name: dic for metadata_type, dic in zip(metadata_types, res)}
         return full_metadata
+
+    @staticmethod
+    def _coerce_numeric_metadata_value(value: MetadataValue, *, field_name: str) -> float:
+        if isinstance(value, Enum):
+            raise TypeError(f"Metadata field '{field_name}' has enum value, expected a numeric value.")
+        if isinstance(value, (int, float, str)):
+            return float(value)
+        raise TypeError(f"Metadata field '{field_name}' value '{value}' is not numeric.")
     
 
 # utility functions to retrieve specific metadata attributes, with unit conversion if necessary. 
@@ -242,9 +270,9 @@ class Metadata:
         wl = await self._get_single_item(Metadata.Type.Optics, 'Wavelength')
         if wl.units is None:
             warnings.warn(f"Wavelength metadata has no units defined. Assuming the value is in nm.")
-            return float(wl.value)
+            return self._coerce_numeric_metadata_value(wl.value, field_name='Wavelength')
         unit = str(wl.units).lower()
-        value = float(wl.value)
+        value = self._coerce_numeric_metadata_value(wl.value, field_name='Wavelength')
         if unit in ('nm', 'nanometer', 'nanometers'):
             return value
         if unit in ('um', 'µm', 'micrometer', 'micrometers'):
@@ -265,9 +293,9 @@ class Metadata:
         t = await self._get_single_item(Metadata.Type.Experiment, 'Temperature')       
         if t.units is None:
             warnings.warn(f"Temperature metadata has no units defined. Assuming the value is in Celsius.")
-            return float(t.value)
+            return self._coerce_numeric_metadata_value(t.value, field_name='Temperature')
         unit = str(t.units).lower()
-        value = float(t.value)
+        value = self._coerce_numeric_metadata_value(t.value, field_name='Temperature')
         if unit in ('c', '°c', 'celsius'):
             return value
         if unit in ('k', 'kelvin'):
@@ -286,9 +314,9 @@ class Metadata:
         sa = await self._get_single_item(Metadata.Type.Brillouin, 'Scattering_angle')
         if sa.units is None:
             warnings.warn(f"Scattering angle metadata has no units defined. Assuming the value is in degrees.")
-            return float(sa.value)
+            return self._coerce_numeric_metadata_value(sa.value, field_name='Scattering_angle')
         unit = str(sa.units).lower()
-        value = float(sa.value)
+        value = self._coerce_numeric_metadata_value(sa.value, field_name='Scattering_angle')
         if unit in ('deg', '°', 'degree', 'degrees'):
             return value
         if unit in ('rad', 'radian', 'radians'):

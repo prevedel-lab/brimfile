@@ -1,32 +1,37 @@
-import sys
+from ..constants import running_from_pyodide
 from ..file_abstraction import sync, _AbstractFile
+from typing import Any, TypeAlias
 
-if "pyodide" not in sys.modules:
+if not running_from_pyodide:
     import zarr
     import json
 
+    Node: TypeAlias = zarr.Group | zarr.Array | zarr.AsyncGroup | zarr.AsyncArray | None
+
     def list_keys(group: zarr.Group | zarr.AsyncGroup) -> list[str]:
         if isinstance(group, zarr.AsyncGroup):
-            async def list_keys_async():
+            async def list_keys_async() -> list[str]:
                 return [key async for key in group.keys()]
             return sync(list_keys_async())
         else:
-            return group.keys()
+            return list(group.keys())
         
-    def get_child(group: zarr.Group | zarr.AsyncGroup, key: str):
+    def get_child(group: zarr.Group | zarr.AsyncGroup, key: str) -> Node:
         if isinstance(group, zarr.AsyncGroup):
-            async def get_child_async():
+            async def get_child_async() -> Node:
                 return await group.get(key)
             return sync(get_child_async())
         else:
             return group[key]
 
-    def recurse_nodes(node):
-        node_dict = {}
-        attrs = node.attrs
-        if hasattr(attrs, 'asdict'):
-            attrs = attrs.asdict()
-        node_dict['attributes'] = attrs
+    def recurse_nodes(node: Node) -> dict[str, Any]:
+        if node is None:
+            raise ValueError("Unexpected None node while traversing Zarr hierarchy")
+        node_dict: dict[str, Any] = {}
+        attrs_obj: Any = node.attrs
+        if hasattr(attrs_obj, 'asdict'):
+            attrs_obj = attrs_obj.asdict()
+        node_dict['attributes'] = attrs_obj
         if isinstance(node, zarr.Group) or isinstance(node, zarr.AsyncGroup):
             node_dict['node_type'] = 'group'
             # Recursively process children
@@ -54,7 +59,10 @@ if "pyodide" not in sys.modules:
             A pretty-printed JSON string describing the full hierarchy.
         """
 
-        root = file._root
+        root_obj = getattr(file, '_root', None)
+        if root_obj is None:
+            raise ValueError("File root group is not available")
+        root: Node = root_obj
         out_dict = recurse_nodes(root)
 
         json_output = json.dumps(out_dict, indent=4)
@@ -74,5 +82,6 @@ else:
             A pretty-printed JSON string describing the full hierarchy.
         """
 
-        return sync(file._zarr_js.generateJsonDescriptor())
-    
+        zarr_js = file._zarr_js
+        assert zarr_js is not None
+        return sync(zarr_js.generateJsonDescriptor())

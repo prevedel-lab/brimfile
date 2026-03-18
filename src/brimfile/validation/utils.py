@@ -1,6 +1,8 @@
 import re
 from enum import StrEnum
 from operator import index
+from collections.abc import Iterable
+from typing import SupportsIndex
 
 _NUMERIC_DTYPE_ALIASES = {
     'int', 'uint', 'float', 'complex',
@@ -18,12 +20,12 @@ class _NodeType(StrEnum):
     GROUP = 'group'
     ARRAY = 'array'
 
-def broadcast_shapes(*shapes: object) -> tuple[int, ...]:
+def broadcast_shapes(*shapes: Iterable[SupportsIndex]) -> tuple[int, ...]:
     """Broadcast multiple shapes using NumPy broadcasting rules."""
     if not shapes:
         return ()
     
-    def _normalize_shape(shape: object, *, arg_index: int) -> tuple[int, ...]:
+    def _normalize_shape(shape: Iterable[SupportsIndex], *, arg_index: int) -> tuple[int, ...]:
         """Validate and normalize a single shape argument."""
         try:
             dims = tuple(shape)

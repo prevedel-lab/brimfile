@@ -4,7 +4,7 @@ from enum import Enum
 import re
 from math import prod
 
-from ..metadata.types import MetadataItem, MetadataItemValidity
+from ..metadata.types import MetadataItem, MetadataItemValidity, MetadataValue
 from ..metadata.validation import validate_single_field
 from ..metadata.schema import Type as MetadataType
 from ..metadata.schema import METADATA_SCHEMA
@@ -13,6 +13,7 @@ from ..constants import brim_obj_names
 from ..utils import concatenate_paths
 from .utils import get_node_type, get_attributes, get_array_shape_and_dtype, \
                     is_numeric_dtype, generate_attr_path, _NodeType, broadcast_shapes
+from typing import cast
 
 class ValidationLevel(Enum):
     """Severity for validation issues."""
@@ -36,11 +37,11 @@ class ValidationType(Enum):
 class ValidationError:
     level: ValidationLevel
     type: ValidationType
-    path: str = None # The full path of the object (group or array) where the error occurred. None if the error is not specific to a particular path.
+    path: str | None = None # The full path of the object (group or array) where the error occurred. None if the error is not specific to a particular path.
     message: str = ""
 
 
-def validate_metadata(metadata_type: MetadataType, metadata_dict: dict[str]) -> list[ValidationError]:
+def validate_metadata(metadata_type: MetadataType, metadata_dict: dict[str, object]) -> list[ValidationError]:
     errs: list[ValidationError] = []
 
     def generate_metadata_path(field_name: str) -> str:
@@ -66,7 +67,9 @@ def validate_metadata(metadata_type: MetadataType, metadata_dict: dict[str]) -> 
                 case MetadataItemValidity.INVALID_TYPE:
                     level = ValidationLevel.ERROR
                     error_type  = ValidationType.INVALID_TYPE
-                    message = f"Metadata field '{field_name}' has an invalid type. Expected type is {METADATA_SCHEMA[metadata_type].get_field(canonical_field_name).python_type.__name__}."
+                    expected_field = next((f for f in METADATA_SCHEMA[metadata_type] if f.name == canonical_field_name), None)
+                    expected_type = expected_field.python_type.__name__ if expected_field is not None else "unknown"
+                    message = f"Metadata field '{field_name}' has an invalid type. Expected type is {expected_type}."
                 case MetadataItemValidity.INVALID_VALUE:
                     level = ValidationLevel.ERROR
                     error_type  = ValidationType.INVALID_VALUE
@@ -91,7 +94,12 @@ def validate_metadata(metadata_type: MetadataType, metadata_dict: dict[str]) -> 
         units = None
         if f"{field_name}_units" in metadata_dict:
             units = metadata_dict[f"{field_name}_units"]
-        canonical_field_name, value = validate_single_field(metadata_type, field_name, MetadataItem(value, units))
+        units_str = units if isinstance(units, str) else None
+        canonical_field_name, value = validate_single_field(
+            metadata_type,
+            field_name,
+            MetadataItem(cast(MetadataValue, value), units_str),
+        )
         validity = value.get_validity()
         err = map_MetadataItemValidity_to_ValidationError(validity, canonical_field_name=canonical_field_name, 
                                                                 path = generate_metadata_path(field_name))

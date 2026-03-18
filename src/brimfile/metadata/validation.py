@@ -182,7 +182,7 @@ def validate_single_field(
     validity : MetadataItemValidity = MetadataItemValidity.VALID
 
     # Get the metadata field from the schema if it exists
-    field: MetadataField = next((f for f in METADATA_SCHEMA[metadata_type] if _normalize_token(f.name) == _normalize_token(field_name)), None)
+    field: MetadataField | None = next((f for f in METADATA_SCHEMA[metadata_type] if _normalize_token(f.name) == _normalize_token(field_name)), None)
     if field is not None:
         if field.name != field_name:
             validity = MetadataItemValidity.LIKELY_TYPO
@@ -235,7 +235,12 @@ def validate_single_field(
     if field is not None:
         if field.enum_type is not None:
             try:
-                coerced_value = _coerce_enum(field.enum_type, value.value)
+                enum_input = value.value
+                if not isinstance(enum_input, (str, Enum)):
+                    raise TypeError(
+                        f"Expected enum value to be a string or Enum of strings, got {type(enum_input).__name__}"
+                    )
+                coerced_value = _coerce_enum(field.enum_type, enum_input)
             except (ValueError, TypeError) as e:
                 validity = MetadataItemValidity.INVALID_VALUE
                 if report_on_invalid:

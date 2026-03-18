@@ -1,8 +1,16 @@
 import numpy as np
 from numpy.typing import NDArray
 from collections.abc import Callable
+from typing import Any, TypeAlias
 
 from enum import Enum
+
+InputArray: TypeAlias = NDArray[np.floating[Any] | np.integer[Any]]
+FloatArray: TypeAlias = NDArray[np.floating[Any]]
+FitModelFunction: TypeAlias = (
+    Callable[[InputArray, float, float, float, float], FloatArray]
+    | Callable[[InputArray, float, float, float, float, float], FloatArray]
+)
 
 class FitModel(Enum):
     Undefined = "Undefined"
@@ -12,7 +20,7 @@ class FitModel(Enum):
     Voigt = "Voigt"
     Custom = "Custom"
 
-def get_fit_model(model: FitModel) -> Callable[..., NDArray]:
+def get_fit_model(model: FitModel) -> FitModelFunction:
     """
     Get the function corresponding to the given fit model
     """
@@ -30,8 +38,8 @@ def get_fit_model(model: FitModel) -> Callable[..., NDArray]:
 
 #%% Fit model definitions
 
-def lorentzian(x: NDArray[np.floating | np.integer], 
-               nu0: float, gamma: float, a: float, b: float) -> NDArray:
+def lorentzian(x: InputArray,
+               nu0: float, gamma: float, a: float, b: float) -> FloatArray:
     """Model of a simple lorentzian lineshape
 
     Parameters
@@ -54,8 +62,8 @@ def lorentzian(x: NDArray[np.floating | np.integer],
     """
     return b + a/( (2*(x-nu0)/gamma) ** 2 + 1)
 
-def dho(x: NDArray[np.floating | np.integer],
-        nu0: float, gamma: float, a: float, b: float) -> NDArray:
+def dho(x: InputArray,
+    nu0: float, gamma: float, a: float, b: float) -> FloatArray:
     """Model of a Damped Harmonic Oscillator (DHO) lineshape
 
     The function is normalized so that the peak maximum equals ``a + b``
@@ -81,8 +89,8 @@ def dho(x: NDArray[np.floating | np.integer],
     """
     return b + a * gamma**2 * (nu0**2 - gamma**2 / 4) / ((x**2 - nu0**2)**2 + (x * gamma)**2)
 
-def gaussian(x: NDArray[np.floating | np.integer], 
-             nu0: float, gamma: float, a: float, b: float) -> NDArray:
+def gaussian(x: InputArray,
+             nu0: float, gamma: float, a: float, b: float) -> FloatArray:
     """Model of a simple gaussian lineshape
 
     Parameters
@@ -105,8 +113,8 @@ def gaussian(x: NDArray[np.floating | np.integer],
     """
     return b + a * np.exp(-4*np.log(2)*((x-nu0)/gamma)**2)
 
-def voigt(x: NDArray[np.floating | np.integer],
-          nu0: float, gamma_lorentz: float, gamma_gauss: float, a: float, b: float) -> NDArray:
+def voigt(x: InputArray,
+          nu0: float, gamma_lorentz: float, gamma_gauss: float, a: float, b: float) -> FloatArray:
     """Model of a simple Voigt-like lineshape.
 
     This implementation uses a pseudo-Voigt approximation (Thompson et al.)
@@ -134,7 +142,7 @@ def voigt(x: NDArray[np.floating | np.integer],
     if gamma_lorentz <= 0 and gamma_gauss <= 0:
         # Degenerate zero-width limit: return an impulse-like peak at the center.
         x_arr = np.asarray(x, dtype=float)
-        return b + a * np.isclose(x_arr, nu0, rtol=0.0, atol=np.finfo(float).eps).astype(float)
+        return b + a * np.isclose(x_arr, nu0, rtol=0.0, atol=float(np.finfo(float).eps)).astype(float)
 
     if gamma_lorentz <= 0:
         return gaussian(x, nu0, gamma_gauss, a, b)

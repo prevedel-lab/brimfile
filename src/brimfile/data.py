@@ -8,12 +8,15 @@ from .utils import concatenate_paths, list_objects_matching_pattern, get_object_
 from .utils import np_array_to_smallest_int_type, _guess_chunks
 
 from .metadata import Metadata
+from .metadata.types import MetadataItem
 
 from numbers import Number
 
 from . import units
-from .analysis_results import AnalysisResults
+from .analysis_results import AnalysisResults as AnalysisResultsType
+from .fitting_models import FitModel
 from .constants import brim_obj_names
+from typing import Any
 
 __docformat__ = "google"
 
@@ -23,9 +26,9 @@ class Data:
     Represents a data group within the brim file.
     """
     # make AnalysisResults available as an attribute of Data
-    AnalysisResults = AnalysisResults
+    AnalysisResults = AnalysisResultsType
 
-    def __init__(self, file: FileAbstraction, path: str, *, newly_created = False):
+    def __init__(self, file: FileAbstraction, path: str, *, newly_created: bool = False) -> None:
         """
         Initialize the Data object. This constructor should not be called directly.
 
@@ -41,15 +44,22 @@ class Data:
 
         self._sparse = self._load_sparse_flag()
         # the _spatial_map is None for non sparse data but the _spatial_map_px_size should always be valid
-        self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping() if not newly_created else (None, None)
+        self._spatial_map, self._spatial_map_px_size = self._load_spatial_mapping() if not newly_created else (
+            None,
+            (
+                Metadata.Item(value=1, units=None),
+                Metadata.Item(value=1, units=None),
+                Metadata.Item(value=1, units=None),
+            ),
+        )
 
-    def get_name(self):
+    def get_name(self) -> str:
         """
         Returns the name of the data group.
         """
         return sync(get_object_name(self._file, self._path))
     
-    def get_index(self):
+    def get_index(self) -> int:
         """
         Returns the index of the data group.
         """
@@ -74,7 +84,7 @@ class Data:
             # if the attribute is not found, return the default value False
             return False
 
-    def _load_spatial_mapping(self, load_in_memory: bool=True) -> tuple:
+    def _load_spatial_mapping(self, load_in_memory: bool = True) -> tuple[np.ndarray | None, tuple[MetadataItem, MetadataItem, MetadataItem]]:
         """
         Load a spatial mapping in the same format as 'Cartesian visualisation',
         irrespectively on whether 'Spatial_map' is defined instead.
@@ -86,8 +96,8 @@ class Data:
             If the spatial mapping is not defined in the file, returns None for the spatial map.
             The pixel size is read from the data group for non-sparse data.
         """
-        cv = None
-        px_size = 3*(Metadata.Item(value=1, units=None),)
+        cv: np.ndarray | None = None
+        px_size: tuple[MetadataItem, MetadataItem, MetadataItem] = 3 * (Metadata.Item(value=1, units=None),)
 
         cv_path = concatenate_paths(
             self._path, brim_obj_names.data.cartesian_visualisation)
@@ -111,13 +121,14 @@ class Data:
                     "No pixel size defined for Cartesian visualisation")            
             px_size_units = sync(units.of_attribute(
                     self._file, cv, 'element_size'))
-            px_size = ()
+            px_size_list: list[MetadataItem] = []
             for i in range(3):
                 # if px_size_val[i] is not a number, set it to 1 and px_size_units to None
                 if isinstance(px_size_val[i], Number):
-                    px_size += (Metadata.Item(px_size_val[i], px_size_units), )
+                    px_size_list.append(Metadata.Item(px_size_val[i], px_size_units))
                 else:
-                    px_size += (Metadata.Item(1, None), )
+                    px_size_list.append(Metadata.Item(1, None))
+            px_size = (px_size_list[0], px_size_list[1], px_size_list[2])
                     
 
             if load_in_memory:
@@ -125,13 +136,15 @@ class Data:
                 cv = np_array_to_smallest_int_type(cv)
 
         elif sync(self._file.object_exists(sm_path)):
-            def load_spatial_map_from_file(self):
+            def load_spatial_map_from_file(self: Data) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 async def load_coordinate_from_sm(coord: str):
                     res = np.empty(0)  # empty array
                     try:
-                        res = await self._file.open_dataset(
+                        opened = await self._file.open_dataset(
                             concatenate_paths(sm_path, coord))
-                        res = await res.to_np_array()
+                        if hasattr(opened, 'to_np_array'):
+                            opened = await opened.to_np_array()
+                        res = np.asarray(opened)
                         res = np.squeeze(res)  # remove single-dimensional entries
                     except Exception as e:
                         # if the coordinate does not exist, return an empty array
@@ -141,7 +154,7 @@ class Data:
                             f"The 'Spatial_map/{coord}' dataset is not a 1D array as expected")
                     return res
 
-                def check_coord_array(arr, size):
+                def check_coord_array(arr: np.ndarray, size: int) -> np.ndarray:
                     if arr.size == 0:
                         return np.zeros(size)
                     elif arr.size != size:
@@ -162,7 +175,7 @@ class Data:
                 z = check_coord_array(z, size)
                 return x, y, z
 
-            def calculate_step(x):
+            def calculate_step(x: np.ndarray) -> tuple[int, float | None]:
                 n = len(np.unique(x))
                 if n == 1:
                     d = None
@@ -182,32 +195,41 @@ class Data:
             cv = np.reshape(indices, (nZ, nY, nX))
 
             px_size_units = sync(units.of_object(self._file, sm_path))
-            px_size = ()
+            px_size_list_sm: list[MetadataItem] = []
             for i in range(3):
                 px_sz = (dZ, dY, dX)[i]
                 px_unit = px_size_units
                 if px_sz is None:
                     px_sz = 1
                     px_unit = None
-                px_size += (Metadata.Item(px_sz, px_unit),)
+                px_size_list_sm.append(Metadata.Item(px_sz, px_unit))
+            px_size = (px_size_list_sm[0], px_size_list_sm[1], px_size_list_sm[2])
         elif not self._sparse:
             try:
-                px_sz = sync(self._file.get_attr(self._group, 'element_size'))
-                if len(px_sz) != 3:
+                px_sz_raw = sync(self._file.get_attr(self._group, 'element_size'))
+                if not isinstance(px_sz_raw, (tuple, list, np.ndarray)):
                     raise ValueError(
                         "The 'element_size' attribute must be a tuple of 3 elements")
+                if len(px_sz_raw) != 3:
+                    raise ValueError(
+                        "The 'element_size' attribute must be a tuple of 3 elements")
+                px_sz_triplet = tuple(px_sz_raw)
                 px_unit = None
                 try:
                     px_unit = sync(units.of_attribute(self._file, self._group, 'element_size'))
                 except Exception:
                     warnings.warn("Pixel size unit is not provided for non-sparse data.")
-                px_size = tuple(Metadata.Item(el, px_unit) for el in px_sz)
+                px_size = (
+                    Metadata.Item(px_sz_triplet[0], px_unit),
+                    Metadata.Item(px_sz_triplet[1], px_unit),
+                    Metadata.Item(px_sz_triplet[2], px_unit),
+                )
             except Exception:
                 warnings.warn("Pixel size is not provided for non-sparse data.")
 
         return cv, px_size
 
-    def get_PSD(self) -> tuple:
+    def get_PSD(self) -> tuple[Any, Any, str, str]:
         """
         LOW LEVEL FUNCTION
 
@@ -241,7 +263,7 @@ class Data:
 
         return PSD, frequency, PSD_units, frequency_units
     
-    def get_PSD_as_spatial_map(self, *, broadcast_frequency: bool = True) -> tuple:
+    def get_PSD_as_spatial_map(self, *, broadcast_frequency: bool = True) -> tuple[np.ndarray, np.ndarray, str, str]:
         """
         Retrieve the Power Spectral Density (PSD) as a spatial map and the frequency from the current data group.
         Arguments:
@@ -288,12 +310,12 @@ class Data:
 
         return PSD, frequency, PSD_units, frequency_units
 
-    def _get_spectrum(self, index: int | tuple[int, int, int]) -> tuple:
+    def _get_spectrum(self, index: int | tuple[int, int, int]) -> tuple[Any, Any, str | None, str | None]:
         """
         Synchronous wrapper for `_get_spectrum_async` (see doc for `brimfile.data.Data._get_spectrum_async`)
         """
         return sync(self._get_spectrum_async(index))
-    async def _get_spectrum_async(self, index: int | tuple[int, int, int]) -> tuple:
+    async def _get_spectrum_async(self, index: int | tuple[int, int, int]) -> tuple[Any, Any, str | None, str | None]:
         """
         Retrieve a spectrum from the data group by its index or coordinates.
 
@@ -311,11 +333,20 @@ class Data:
             raise ValueError("For sparse data, index must be an integer.")
         elif not self._sparse and not (isinstance(index, tuple) and len(index) == 3):
             raise ValueError("For non-sparse data, index must be a tuple of (z, y, x) coordinates.")
+
+        flat_index: int | None = None
+        coord_index: tuple[int, int, int] | None = None
+        if self._sparse:
+            assert isinstance(index, int)
+            flat_index = index
+        else:
+            assert isinstance(index, tuple)
+            coord_index = index
             
         # index = -1 corresponds to no spectrum
-        if self._sparse and index < 0:
+        if self._sparse and flat_index is not None and flat_index < 0:
             return None, None, None, None
-        elif not self._sparse and any(i < 0 for i in index):
+        elif not self._sparse and coord_index is not None and any(i < 0 for i in coord_index):
             return None, None, None, None
         PSD, frequency = await asyncio.gather(
             self._file.open_dataset(concatenate_paths(
@@ -323,12 +354,12 @@ class Data:
             self._file.open_dataset(concatenate_paths(
                 self._path, brim_obj_names.data.frequency))
             )
-        if self._sparse and index >= PSD.shape[0]:
+        if self._sparse and flat_index is not None and flat_index >= PSD.shape[0]:
             raise IndexError(
-                f"index {index} out of range for PSD with shape {PSD.shape}")
-        elif not self._sparse and any(i >= PSD.shape[j] for j, i in enumerate(index)):
+            f"index {flat_index} out of range for PSD with shape {PSD.shape}")
+        elif not self._sparse and coord_index is not None and any(i >= PSD.shape[j] for j, i in enumerate(coord_index)):
             raise IndexError(
-                f"index {index} out of range for PSD with shape {PSD.shape}")
+            f"index {coord_index} out of range for PSD with shape {PSD.shape}")
         # retrieve the units of the PSD and frequency
         PSD_units, frequency_units = await asyncio.gather(
             units.of_object(self._file, PSD),
@@ -336,11 +367,13 @@ class Data:
         )
         # add ellipsis to the index to select the spectrum and the corresponding frequency
         if self._sparse:
-            index = (index, ...)
+            assert flat_index is not None
+            index_psd: tuple[Any, ...] = (flat_index, ...)
         else:
-            index = index + (..., )
+            assert coord_index is not None
+            index_psd = coord_index + (..., )
         # map index to the frequency array, considering the broadcasting rules
-        index_frequency = index
+        index_frequency: tuple[Any, ...] = index_psd
         if frequency.ndim < PSD.ndim:
             if self._sparse:
                 # given the definition of the brim file format,
@@ -354,10 +387,10 @@ class Data:
                     index_frequency = (..., )
                 else:
                     # if the frequency has some spatial dimensions but not all, we need to add the corresponding indices to the index of the frequency
-                    index_frequency = index[-unassigned_indices:] + (..., )
+                    index_frequency = index_psd[-unassigned_indices:]
         #get the spectrum and the corresponding frequency at the specified index
         PSD, frequency = await asyncio.gather(
-            _async_getitem(PSD, index),
+            _async_getitem(PSD, index_psd),
             _async_getitem(frequency, index_frequency)
         )
         #broadcast the frequency to match the shape of PSD if needed
@@ -365,7 +398,7 @@ class Data:
             frequency = np.broadcast_to(frequency, PSD.shape)
         return PSD, frequency, PSD_units, frequency_units
 
-    def get_spectrum_in_image(self, coor: tuple) -> tuple:
+    def get_spectrum_in_image(self, coor: tuple[int, int, int]) -> tuple[Any, Any, str | None, str | None]:
         """
         Retrieve a spectrum from the data group using spatial coordinates.
 
@@ -379,12 +412,13 @@ class Data:
             raise ValueError("coor must contain 3 values for z, y, x")
 
         if self._sparse:
+            assert self._spatial_map is not None
             index = int(self._spatial_map[coor])
             return self._get_spectrum(index)
         else:
             return self._get_spectrum(coor)
           
-    def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0):
+    def get_spectrum_and_all_quantities_in_image(self, ar: AnalysisResultsType, coor: tuple[int, int, int], index_peak: int = 0) -> tuple[tuple[Any, Any, str | None, str | None], dict[str, dict[str, MetadataItem]]]:
         """
         Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
 
@@ -400,8 +434,9 @@ class Data:
         """
         if len(coor) != 3:
             raise ValueError("coor must contain 3 values for z, y, x")
-        index = coor
+        index: int | tuple[int, int, int] = coor
         if self._sparse:
+            assert self._spatial_map is not None
             index = int(self._spatial_map[coor])
         spectrum, quantities = _gather_sync(
             self._get_spectrum_async(index),
@@ -409,7 +444,7 @@ class Data:
         )
         return spectrum, quantities
 
-    def get_metadata(self):
+    def get_metadata(self) -> Metadata:
         """
         Returns the metadata associated with the current Data group
         Note that this contains both the general metadata stored in the file (which might be redifined by the specific data group)
@@ -417,7 +452,7 @@ class Data:
         """
         return Metadata(self._file, self._path)
 
-    def get_num_parameters(self) -> tuple:
+    def get_num_parameters(self) -> tuple[int, ...]:
         """
         Retrieves the number of parameters
 
@@ -427,7 +462,7 @@ class Data:
         pars, _ = self.get_parameters()
         return pars.shape if pars is not None else ()
 
-    def get_parameters(self) -> list:
+    def get_parameters(self) -> tuple[Any, Any]:
         """
         Retrieves the parameters  and their associated names.
 
@@ -444,8 +479,8 @@ class Data:
             return (pars, pars_names)
         return (None, None)
 
-    def create_analysis_results_group(self, data_AntiStokes, data_Stokes=None, *,
-                                          index: int = None, name: str = None, fit_model: 'Data.AnalysisResults.FitModel' = None) -> AnalysisResults:
+    def create_analysis_results_group(self, data_AntiStokes: dict[str, Any] | list[dict[str, Any]], data_Stokes: dict[str, Any] | list[dict[str, Any]] | None = None, *,
+                                          index: int | None = None, name: str | None = None, fit_model: FitModel | None = None) -> AnalysisResultsType:
         """
         Adds a new AnalysisResults entry to the current data group.
         Parameters:
@@ -482,7 +517,7 @@ class Data:
 
         return ar
 
-    def list_AnalysisResults(self, retrieve_custom_name=False) -> list:
+    def list_AnalysisResults(self, retrieve_custom_name: bool = False) -> list[dict[str, Any]]:
         """
         List all AnalysisResults groups in the current data group. The list is ordered by index.
 
@@ -497,7 +532,7 @@ class Data:
 
         matched_objs = list_objects_matching_pattern(
             self._file, self._group, brim_obj_names.data.analysis_results + r"_(\d+)$")
-        async def _make_dict_item(matched_obj, retrieve_custom_name):
+        async def _make_dict_item(matched_obj: tuple[str, ...], retrieve_custom_name: bool) -> dict[str, Any]:
             name = matched_obj[0]
             index = int(matched_obj[1])
             curr_obj_dict = {'name': name, 'index': index}
@@ -515,7 +550,7 @@ class Data:
 
         return analysis_results_groups
 
-    def get_analysis_results(self, index: int = 0) -> AnalysisResults:
+    def get_analysis_results(self, index: int = 0) -> AnalysisResultsType:
         """
         Returns the AnalysisResults at the specified index
 
@@ -537,8 +572,8 @@ class Data:
         return Data.AnalysisResults(self._file, path, data_group_path=self._path,
                                     spatial_map=self._spatial_map, spatial_map_px_size=self._spatial_map_px_size, sparse=self._sparse)
 
-    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict = None, freq_units='GHz',
-                  timestamp: np.ndarray = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()):
+    def _add_data(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict[str, Any] | None = None, freq_units: str = 'GHz',
+                  timestamp: np.ndarray | None = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> None:
         """
         Add data to the current data group.
 
@@ -571,6 +606,8 @@ class Data:
             ValueError: If any of the data provided is not valid or consistent
         """
 
+        scanning_dict: dict[str, Any] = scanning if scanning is not None else {}
+
         # Check if frequency is broadcastable to PSD
         try:
             np.broadcast_shapes(tuple(frequency.shape), tuple(PSD.shape))
@@ -580,12 +617,12 @@ class Data:
         # Check if at least one of 'Spatial_map' or 'Cartesian_visualisation' is present in the scanning dictionary
         # This is required for sparse data to establish the spatial mapping
         has_spatial_mapping = False
-        if scanning is not None:
-            if 'Spatial_map' in scanning:
-                sm = scanning['Spatial_map']
+        if scanning_dict:
+            if 'Spatial_map' in scanning_dict:
+                sm = scanning_dict['Spatial_map']
                 size = 0
 
-                def check_coor(coor: str):
+                def check_coor(coor: str) -> int | None:
                     if coor in sm:
                         sm[coor] = np.array(sm[coor])
                         size1 = sm[coor].size
@@ -593,23 +630,30 @@ class Data:
                             raise ValueError(
                                 f"'{coor}' in 'Spatial_map' is invalid!")
                         return size1
-                size = check_coor('x')
-                size = check_coor('y')
-                size = check_coor('z')
+                    return None
+                size_x = check_coor('x')
+                if size_x is not None:
+                    size = size_x
+                size_y = check_coor('y')
+                if size_y is not None:
+                    size = size_y
+                size_z = check_coor('z')
+                if size_z is not None:
+                    size = size_z
                 if size == 0:
                     raise ValueError(
                         "'Spatial_map' should contain at least one x, y or z")
                 has_spatial_mapping = True
-            if 'Cartesian_visualisation' in scanning:
-                cv = scanning['Cartesian_visualisation']
+            if 'Cartesian_visualisation' in scanning_dict:
+                cv = scanning_dict['Cartesian_visualisation']
                 if not isinstance(cv, np.ndarray) or cv.ndim != 3:
                     raise ValueError(
                         "Cartesian_visualisation must be a 3D numpy array")
                 if not np.issubdtype(cv.dtype, np.integer) or np.min(cv) < -1 or np.max(cv) >= PSD.shape[0]:
                     raise ValueError(
                         "Cartesian_visualisation values must be integers between -1 and PSD.shape[0]-1")
-                if 'Cartesian_visualisation_pixel' in scanning:
-                    if len(scanning['Cartesian_visualisation_pixel']) != 3:
+                if 'Cartesian_visualisation_pixel' in scanning_dict:
+                    if len(scanning_dict['Cartesian_visualisation_pixel']) != 3:
                         raise ValueError(
                             "Cartesian_visualisation_pixel must always contain 3 values for z, y, x (set to None if not used)")
                 else:
@@ -626,7 +670,7 @@ class Data:
         # TODO: add and validate additional datasets (i.e. 'Parameters', 'Calibration_index', etc.)
 
         # Add datasets to the group
-        def determine_chunk_size(arr: np.array) -> tuple:
+        def determine_chunk_size(arr: np.ndarray) -> tuple[int, ...]:
             """"
             Use the same heuristic as the zarr library to determine the chunk size, but without splitting the last dimension
             """
@@ -635,10 +679,12 @@ class Data:
             #if the array is 1D, do not chunk it
             if len(shape) <= 1:
                 return (shape[0],)
-            target_sizes = _guess_chunks.__kwdefaults__
+            target_sizes_defaults = _guess_chunks.__kwdefaults__
+            if target_sizes_defaults is None:
+                return shape
             # divide the target size by the last dimension size to get the chunk size for the other dimensions
-            target_sizes = {k: target_sizes[k] // shape[-1] 
-                            for k in target_sizes.keys()}
+            target_sizes = {k: target_sizes_defaults[k] // shape[-1] 
+                            for k in target_sizes_defaults.keys()}
             chunks = _guess_chunks(shape[0:-1], typesize, arr.nbytes, **target_sizes)
             return chunks + (shape[-1],)  # keep the last dimension size unchanged
         sync(self._file.create_dataset(
@@ -650,14 +696,14 @@ class Data:
         units.add_to_object(self._file, freq_ds, freq_units)
 
         if scanning is not None:
-            if 'Spatial_map' in scanning:
-                sm = scanning['Spatial_map']
+            if 'Spatial_map' in scanning_dict:
+                sm = scanning_dict['Spatial_map']
                 sm_group = sync(self._file.create_group(concatenate_paths(
                     self._path, brim_obj_names.data.spatial_map)))
                 if 'units' in sm:
                     units.add_to_object(self._file, sm_group, sm['units'])
 
-                def add_sm_dataset(coord: str):
+                def add_sm_dataset(coord: str) -> None:
                     if coord in sm:
                         coord_dts = sync(self._file.create_dataset(
                             sm_group, coord, data=sm[coord], compression=compression))
@@ -665,16 +711,16 @@ class Data:
                 add_sm_dataset('x')
                 add_sm_dataset('y')
                 add_sm_dataset('z')
-            if 'Cartesian_visualisation' in scanning:
+            if 'Cartesian_visualisation' in scanning_dict:
                 # convert the Cartesian_visualisation to the smallest integer type
-                cv_arr = np_array_to_smallest_int_type(scanning['Cartesian_visualisation'])
+                cv_arr = np_array_to_smallest_int_type(scanning_dict['Cartesian_visualisation'])
                 cv = sync(self._file.create_dataset(self._group, brim_obj_names.data.cartesian_visualisation,
                                             data=cv_arr, compression=compression))
-                if 'Cartesian_visualisation_pixel' in scanning:
+                if 'Cartesian_visualisation_pixel' in scanning_dict:
                     sync(self._file.create_attr(
-                        cv, 'element_size', scanning['Cartesian_visualisation_pixel']))
-                    if 'Cartesian_visualisation_pixel_unit' in scanning:
-                        px_unit = scanning['Cartesian_visualisation_pixel_unit']
+                        cv, 'element_size', scanning_dict['Cartesian_visualisation_pixel']))
+                    if 'Cartesian_visualisation_pixel_unit' in scanning_dict:
+                        px_unit = scanning_dict['Cartesian_visualisation_pixel_unit']
                     else:
                         warnings.warn(
                             "No unit provided for Cartesian_visualisation_pixel, defaulting to 'um'")
@@ -688,7 +734,7 @@ class Data:
                 self._group, 'Timestamp', data=timestamp, compression=compression))
 
     @staticmethod
-    def list_data_groups(file: FileAbstraction, retrieve_custom_name=False) -> list:
+    def list_data_groups(file: FileAbstraction, retrieve_custom_name: bool = False) -> list[dict[str, Any]]:
         """
         List all data groups in the brim file. The list is ordered by index.
 
@@ -704,7 +750,7 @@ class Data:
         matched_objs = list_objects_matching_pattern(
             file, brim_obj_names.Brillouin_base_path, brim_obj_names.data.base_group + r"_(\d+)$")
         
-        async def _make_dict_item(matched_obj, retrieve_custom_name):
+        async def _make_dict_item(matched_obj: tuple[str, ...], retrieve_custom_name: bool) -> dict[str, Any]:
             name = matched_obj[0]
             index = int(matched_obj[1])
             curr_obj_dict = {'name': name, 'index': index}
@@ -725,7 +771,7 @@ class Data:
         return data_groups
 
     @staticmethod
-    def _get_existing_group_name(file: FileAbstraction, index: int) -> str:
+    def _get_existing_group_name(file: FileAbstraction, index: int) -> str | None:
         """
         Get the name of an existing data group by index.
 
@@ -736,7 +782,7 @@ class Data:
         Returns:
             str: The name of the data group, or None if not found.
         """
-        group_name: str = None
+        group_name: str | None = None
         data_groups = Data.list_data_groups(file)
         for dg in data_groups:
             if dg['index'] == index:
@@ -745,7 +791,7 @@ class Data:
         return group_name
 
     @classmethod
-    def _create_new(cls, file: FileAbstraction, index: int, sparse: bool = False, name: str = None) -> 'Data':
+    def _create_new(cls, file: FileAbstraction, index: int, sparse: bool = False, name: str | None = None) -> 'Data':
         """
         Create a new data group with the specified index.
 
@@ -767,7 +813,7 @@ class Data:
         return cls(file, concatenate_paths(brim_obj_names.Brillouin_base_path, group_name), newly_created=True)
 
     @staticmethod
-    def _generate_group_name(index: int, n_digits: int = None) -> str:
+    def _generate_group_name(index: int, n_digits: int | None = None) -> str:
         """
         Generate a name for a data group based on the index.
 

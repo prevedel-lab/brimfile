@@ -1,4 +1,9 @@
+from sys import modules
+from typing import Final
+
 __docformat__ = "google"
+
+running_from_pyodide: Final[bool] = ("pyodide" in modules)
 
 reserved_attr_names = ('Units', 'Name')
 

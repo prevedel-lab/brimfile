@@ -11,6 +11,7 @@ from . import units
 from .file_abstraction import FileAbstraction, StoreType, sync
 from .validation import validate_json, ValidationError, ValidationLevel
 from .validation.json_descriptor import generate_json_descriptor
+from typing import Any
 
 # don't import _AbstractFile if running in pyodide (it is defined in js)
 import sys
@@ -24,38 +25,44 @@ class File:
     Represents a brim file with Brillouin data, extending h5py.File.
     """
 
-    if "pyodide" in sys.modules:
-        def __init__(self, file):
-            self._file = file
-            if not self.is_valid():
-                raise ValueError("The brim file is not valid!")
-    else:
-        def __init__(self, filename: str, mode: str = 'r',
-                     store_type: StoreType = StoreType.AUTO, * ,
-                     validate: bool = False) -> None:
-            """
-            Initialize the File object.
+    def __init__(self, filename: str | Any, mode: str = 'r',
+                 store_type: StoreType = StoreType.AUTO, *,
+                 validate: bool = False) -> None:
+        """
+        Initialize the File object.
 
-            Args:
-                filename (str): Path to the brim file.
-                mode: {'r', 'r+', 'a', 'w', 'w-'} the mode for opening the file (default is 'r' for read-only).
-                            See the definition of `mode` in `brimfile.file_abstraction._zarrFile.__init__()` for more details.
-                            'r' means read only (must exist); 'r+' means read/write (must exist);
-                            'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
-                store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
-                validate (bool): Whether to validate the file upon initialization. Default is False.
-            """
-            self._file = _AbstractFile(
-                filename, mode=mode, store_type=store_type)
+        Args:
+            filename (str | Any): Path to the brim file, or a backend file object in pyodide.
+            mode: {'r', 'r+', 'a', 'w', 'w-'} the mode for opening the file (default is 'r' for read-only).
+                        See the definition of `mode` in `brimfile.file_abstraction._zarrFile.__init__()` for more details.
+                        'r' means read only (must exist); 'r+' means read/write (must exist);
+                        'a' means read/write (create if doesn't exist); 'w' means create (overwrite if exists); 'w-' means create (fail if exists).
+            store_type (StoreType): Type of the store to use, as defined in `brimfile.file_abstraction.StoreType`. Default is 'AUTO'.
+            validate (bool): Whether to validate the file upon initialization. Default is False.
+        """
+        self._file: Any
+
+        if "pyodide" in sys.modules:
+            if isinstance(filename, str):
+                raise TypeError("In pyodide, filename must be a backend file object, not a string path")
+            self._file = filename
             if not self.is_valid():
                 raise ValueError("The brim file is not valid!")
-            if validate:
-                validation_errors: list[ValidationError] = self.validate()
-                for err in validation_errors:
-                    if err.level == ValidationLevel.WARNING or err.level == ValidationLevel.ERROR:
-                        warnings.warn(f"Validation warning at {err.path}: {err.message}")
-                    elif err.level == ValidationLevel.CRITICAL:
-                        raise ValueError(f"Validation error at {err.path}: {err.message}")
+            return
+
+        if not isinstance(filename, str):
+            raise TypeError("filename must be a string when not running in pyodide")
+
+        self._file = _AbstractFile(filename, mode=mode, store_type=store_type)
+        if not self.is_valid():
+            raise ValueError("The brim file is not valid!")
+        if validate:
+            validation_errors: list[ValidationError] = self.validate()
+            for err in validation_errors:
+                if err.level == ValidationLevel.WARNING or err.level == ValidationLevel.ERROR:
+                    warnings.warn(f"Validation warning at {err.path}: {err.message}")
+                elif err.level == ValidationLevel.CRITICAL:
+                    raise ValueError(f"Validation error at {err.path}: {err.message}")
 
     def validate(self) -> list[ValidationError]:
         """
@@ -69,7 +76,7 @@ class File:
         validation_errors: list[ValidationError] = validate_json(json_descriptor)
         return validation_errors
     
-    def __del__(self):
+    def __del__(self) -> None:
         try:
             if hasattr(self, '_file'):
                 self.close()
@@ -117,8 +124,8 @@ class File:
 
         return f
 
-    def create_data_group(self, PSD: np.ndarray, frequency: np.ndarray, px_size_um: tuple, *, index: int = None,
-                          name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+    def create_data_group(self, PSD: np.ndarray, frequency: np.ndarray, px_size_um: tuple[float | int | None, float | int | None, float | int | None], *, index: int | None = None,
+                          name: str | None = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
         Adds a new data entry to the file.
         Parameters:
@@ -147,8 +154,8 @@ class File:
         return self._create_data_group_raw(PSD, frequency, scanning = None, sparse = False, px_size_um=px_size_um, 
                                              index=index, name=name, compression=compression)
 
-    def create_data_group_sparse(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, *, timestamp: np.ndarray = None,
-                                index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+    def create_data_group_sparse(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict[str, Any], *, timestamp: np.ndarray | None = None,
+                                index: int | None = None, name: str | None = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
         Adds a new [sparse data entry](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) to the file.
         
@@ -173,8 +180,8 @@ class File:
         """
         return self._create_data_group_raw(PSD, frequency, scanning=scanning, timestamp=timestamp, sparse=True, index=index, name=name, compression=compression)   
     
-    def _create_data_group_raw(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict = None, px_size_um = None, timestamp: np.ndarray = None, sparse: bool = False,
-                                index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
+    def _create_data_group_raw(self, PSD: np.ndarray, frequency: np.ndarray, *, scanning: dict[str, Any] | None = None, px_size_um: tuple[float | int | None, float | int | None, float | int | None] | None = None, timestamp: np.ndarray | None = None, sparse: bool = False,
+                                index: int | None = None, name: str | None = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
         Adds a new data entry to the file. Check the documentation for `brimfile.data.Data._add_data` for more details on the parameters.
         Parameters:
@@ -217,7 +224,7 @@ class File:
                    timestamp=timestamp, compression=compression)
         return d
 
-    def list_data_groups(self, retrieve_custom_name=False) -> list:
+    def list_data_groups(self, retrieve_custom_name: bool = False) -> list[dict[str, Any]]:
         """
         List all data groups in the brim file.
 
@@ -236,7 +243,7 @@ class File:
         Returns:
             Data: The Data object corresponding to the specified index.
         """
-        group_name: str = Data._get_existing_group_name(self._file, index)
+        group_name: str | None = Data._get_existing_group_name(self._file, index)
         if group_name is None:
             raise IndexError(f"Data {index} not found")
         data = Data(self._file, concatenate_paths(

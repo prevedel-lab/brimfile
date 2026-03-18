@@ -3,7 +3,7 @@ from .file_abstraction import FileAbstraction, sync
 __docformat__ = "google"
 
 
-async def of_object(file: FileAbstraction, obj) -> str:
+async def of_object(file: FileAbstraction, obj: object) -> str:
     """
     Get the units of a given object in a file.
 
@@ -21,7 +21,7 @@ async def of_object(file: FileAbstraction, obj) -> str:
         return ''
 
 
-def add_to_object(file: FileAbstraction, obj, units: str):
+def add_to_object(file: FileAbstraction, obj: object, units: str) -> None:
     """
     Set the units of a given object in a file.
 
@@ -33,7 +33,7 @@ def add_to_object(file: FileAbstraction, obj, units: str):
     sync(file.create_attr(obj, 'Units', units))
 
 
-async def of_attribute(file: FileAbstraction, obj, attr_name: str) -> str:
+async def of_attribute(file: FileAbstraction, obj: object, attr_name: str) -> str:
     """
     Get the units of an attribute attached to a given object in a file.
 
@@ -52,7 +52,7 @@ async def of_attribute(file: FileAbstraction, obj, attr_name: str) -> str:
         return ''
 
 
-def add_to_attribute(file: FileAbstraction, obj, attr_name: str, units: str):
+def add_to_attribute(file: FileAbstraction, obj: object, attr_name: str, units: str) -> None:
     """
     Set the units of a given attribute in a file.
 

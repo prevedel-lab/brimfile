@@ -188,32 +188,42 @@ def schema_as_string(
         fixed_width = attr_width + mandatory_width + separators
         available_for_dynamic = max(32, terminal_columns - fixed_width)
 
-        if type_width is None and description_width is None:
-            type_width = max(min_type_width, int(available_for_dynamic * 0.55))
-            description_width = max(min_description_width, available_for_dynamic - type_width)
-        elif type_width is None:
-            description_width = max(min_description_width, description_width)
-            type_width = max(min_type_width, available_for_dynamic - description_width)
-        elif description_width is None:
-            type_width = max(min_type_width, type_width)
-            description_width = max(min_description_width, available_for_dynamic - type_width)
-        else:
-            type_width = max(min_type_width, type_width)
-            description_width = max(min_description_width, description_width)
+        resolved_type_width: int
+        resolved_description_width: int
 
-        total_width = fixed_width + type_width + description_width
+        if type_width is None and description_width is None:
+            resolved_type_width = max(min_type_width, int(available_for_dynamic * 0.55))
+            resolved_description_width = max(min_description_width, available_for_dynamic - resolved_type_width)
+        elif type_width is None:
+            assert description_width is not None
+            resolved_description_width = max(min_description_width, int(description_width))
+            resolved_type_width = max(min_type_width, available_for_dynamic - resolved_description_width)
+        elif description_width is None:
+            assert type_width is not None
+            resolved_type_width = max(min_type_width, int(type_width))
+            resolved_description_width = max(min_description_width, available_for_dynamic - resolved_type_width)
+        else:
+            assert type_width is not None
+            assert description_width is not None
+            resolved_type_width = max(min_type_width, int(type_width))
+            resolved_description_width = max(min_description_width, int(description_width))
+
+        total_width = fixed_width + resolved_type_width + resolved_description_width
         if total_width > terminal_columns:
             overflow = total_width - terminal_columns
-            reducible_description = max(0, description_width - min_description_width)
+            reducible_description = max(0, resolved_description_width - min_description_width)
             reduce_from_description = min(overflow, reducible_description)
-            description_width -= reduce_from_description
+            resolved_description_width -= reduce_from_description
             overflow -= reduce_from_description
 
             if overflow > 0:
-                reducible_type = max(0, type_width - min_type_width)
+                reducible_type = max(0, resolved_type_width - min_type_width)
                 reduce_from_type = min(overflow, reducible_type)
-                type_width -= reduce_from_type
+                resolved_type_width -= reduce_from_type
                 overflow -= reduce_from_type
+
+        type_width = resolved_type_width
+        description_width = resolved_description_width
     else:
         separators = 2
         fixed_width = attr_width + mandatory_width + separators
@@ -223,6 +233,9 @@ def schema_as_string(
         else:
             type_width = max(min_type_width, min(type_width, available_for_type))
 
+    assert type_width is not None
+    description_width_value = description_width if description_width is not None else min_description_width
+
     lines: list[str] = []
 
     for section_type, fields in sections.items():
@@ -230,11 +243,12 @@ def schema_as_string(
         lines.append(section_type.value)
         lines.append("-" * len(section_type.value))
         if include_description:
+            assert description_width is not None
             lines.append(
-                f"{'Attribute':<{attr_width}} {'Type':<{type_width}} {'Mandatory':<{mandatory_width}} {'Description':<{description_width}}"
+                f"{'Attribute':<{attr_width}} {'Type':<{type_width}} {'Mandatory':<{mandatory_width}} {'Description':<{description_width_value}}"
             )
             lines.append(
-                f"{'-' * attr_width} {'-' * type_width} {'-' * mandatory_width} {'-' * description_width}"
+                f"{'-' * attr_width} {'-' * type_width} {'-' * mandatory_width} {'-' * description_width_value}"
             )
         else:
             lines.append(f"{'Attribute':<{attr_width}} {'Type':<{type_width}} {'Mandatory':<{mandatory_width}}")
@@ -250,8 +264,8 @@ def schema_as_string(
             wrapped_type = textwrap.wrap(type_label, width=type_width) or [type_label]
             if include_description:
                 description_label = field.description or ""
-                description_width = int(description_width)
-                wrapped_description = textwrap.wrap(description_label, width=description_width) or [""]
+                description_width_int = int(description_width_value)
+                wrapped_description = textwrap.wrap(description_label, width=description_width_int) or [""]
                 line_count = max(len(wrapped_type), len(wrapped_description))
                 for i in range(line_count):
                     attr_text = field.name if i == 0 else ""
@@ -259,7 +273,7 @@ def schema_as_string(
                     type_line = wrapped_type[i] if i < len(wrapped_type) else ""
                     description_line = wrapped_description[i] if i < len(wrapped_description) else ""
                     lines.append(
-                        f"{attr_text:<{attr_width}} {type_line:<{type_width}} {mandatory_text:<{mandatory_width}} {description_line:<{description_width}}"
+                        f"{attr_text:<{attr_width}} {type_line:<{type_width}} {mandatory_text:<{mandatory_width}} {description_line:<{description_width_int}}"
                     )
             else:
                 for i, type_line in enumerate(wrapped_type):

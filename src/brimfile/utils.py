@@ -1,12 +1,15 @@
 import re
 import numpy as np
+from typing import Any, TypeVar
 
 from .file_abstraction import FileAbstraction, sync
 
 __docformat__ = "google"
 
+T = TypeVar("T")
 
-def concatenate_paths(*paths):
+
+def concatenate_paths(*paths: str) -> str:
     """
     Concatenate multiple paths into a single path.
 
@@ -26,7 +29,7 @@ def concatenate_paths(*paths):
     return con_path
 
 
-def list_objects_matching_pattern(file: FileAbstraction, parent_obj, regexp: str) -> list:
+def list_objects_matching_pattern(file: FileAbstraction, parent_obj: object, regexp: str) -> list[tuple[str, ...]]:
     """
     Lists objects within a parent object that match a given regular expression pattern.
     Args:
@@ -60,12 +63,12 @@ async def get_object_name(file: FileAbstraction, obj_path: str) -> str:
         name = await file.get_attr(obj_path, 'Name')
         if name is None or name == '':
             raise Exception("Name attribute is None")
-    except Exception as e:
+    except Exception:
         name = obj_path.split('/')[-1]
     return name
 
 
-def set_object_name(file: FileAbstraction, obj, name: str):
+def set_object_name(file: FileAbstraction, obj: object, name: str) -> None:
     """
     Set the name of the object.
 
@@ -73,7 +76,7 @@ def set_object_name(file: FileAbstraction, obj, name: str):
     """
     sync(file.create_attr(obj, 'Name', name))
 
-def var_to_singleton(var):
+def var_to_singleton(var: T | list[T] | tuple[T, ...]) -> T | list[T] | tuple[T, ...]:
     """
     If `var` is not a list or a tuple, convert it to a single-ton (list with one element).
 
@@ -87,7 +90,7 @@ def var_to_singleton(var):
         var = [var,]
     return var
 
-def np_array_to_smallest_int_type(arr):
+def np_array_to_smallest_int_type(arr: np.ndarray) -> np.ndarray:
     """
     Convert a numpy array containing integers to the smallest integer type that can hold its values.
 
@@ -97,7 +100,7 @@ def np_array_to_smallest_int_type(arr):
     Returns:
         numpy.ndarray: The converted array with the smallest integer type.
     """
-    def type_bug_fix (dt):
+    def type_bug_fix(dt: Any) -> Any:
         # explicitely pass an object of type np.dtype
         # as what is returned by `min_scalar_type seems``
         # to break type matching in the zarr library
@@ -135,7 +138,7 @@ def np_array_to_smallest_int_type(arr):
 def _guess_chunks(
     shape: tuple,
     typesize: int,
-    dset_size: int = None,
+    dset_size: int | None = None,
     *,
     increment_bytes: int = 256 * 1024,
     min_bytes: int = 128 * 1024,

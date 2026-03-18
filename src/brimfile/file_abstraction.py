@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 import numpy as np  
 import asyncio
+from typing import Any, Literal, cast
 
 __docformat__ = "google"
+
+_ZarrAsyncArray: type[Any]
+_ZarrArray: type[Any]
 
 class FileAbstraction(ABC):
     """
@@ -21,7 +27,7 @@ class FileAbstraction(ABC):
     # -------------------- Attribute Management --------------------
 
     @abstractmethod
-    async def create_attr(self, obj, name: str, data, **kwargs):
+    async def create_attr(self, obj: object, name: str, data: Any, **kwargs: Any) -> Any:
         """
         Create an attribute in the file.
 
@@ -34,7 +40,7 @@ class FileAbstraction(ABC):
         pass
 
     @abstractmethod
-    async def get_attr(self, obj, name: str):
+    async def get_attr(self, obj: object, name: str) -> Any:
         """
         Return the data of an attribute in the file.
 
@@ -49,7 +55,7 @@ class FileAbstraction(ABC):
     # -------------------- Group Management --------------------
 
     @abstractmethod
-    async def open_group(self, full_path: str, **kwargs):
+    async def open_group(self, full_path: str, **kwargs: Any) -> Any:
         """
         Open a group in the file.
 
@@ -60,7 +66,7 @@ class FileAbstraction(ABC):
         pass
 
     @abstractmethod
-    async def create_group(self, full_path: str, **kwargs):
+    async def create_group(self, full_path: str, **kwargs: Any) -> Any:
         """
         Create a group in the file.
 
@@ -81,12 +87,12 @@ class FileAbstraction(ABC):
         ZLIB = 2
         LZF = 3
 
-        def __init__(self, type=DEFAULT, level=None):
+        def __init__(self, type: int = DEFAULT, level: int | None = None) -> None:
             self.type = type
             self.level = level
 
     @abstractmethod
-    async def open_dataset(self, full_path: str):
+    async def open_dataset(self, full_path: str) -> Any:
         """
         Open a dataset in the file.
 
@@ -99,7 +105,7 @@ class FileAbstraction(ABC):
         pass
 
     @abstractmethod
-    async def create_dataset(self, parent_group, name: str, data, chunk_size=None, compression: 'FileAbstraction.Compression' = None):
+    async def create_dataset(self, parent_group: object, name: str, data: Any, chunk_size: tuple[int, ...] | str | None = None, compression: 'FileAbstraction.Compression' | None = None) -> Any:
         """
         Create a dataset in the file.
 
@@ -115,7 +121,7 @@ class FileAbstraction(ABC):
     # -------------------- Listing --------------------
 
     @abstractmethod
-    async def list_objects(self, obj) -> list:
+    async def list_objects(self, obj: object) -> list[str]:
         """
         Lists the objects (groups or datasets) contained within one hierarchical level below the given object.
 
@@ -128,7 +134,7 @@ class FileAbstraction(ABC):
         pass
 
     @abstractmethod
-    async def object_exists(self, full_path) -> bool:
+    async def object_exists(self, full_path: str) -> bool:
         """
         Check if an object exists in the file.
 
@@ -141,7 +147,7 @@ class FileAbstraction(ABC):
         pass
 
     @abstractmethod
-    async def list_attributes(self, obj) -> list:
+    async def list_attributes(self, obj: object) -> list[str]:
         """
         Lists the attributes attached to the specified object.
 
@@ -155,7 +161,7 @@ class FileAbstraction(ABC):
 
     # -------------------- File Management --------------------
 
-    def close(self):
+    def close(self) -> None:
         """
         Close the file.
         """
@@ -185,7 +191,7 @@ class StoreType(Enum):
     AUTO = 'auto' 
     """Automatically determine the store type based on the filename (i.e. extension or url schema)"""
 
-async def _async_getitem(obj, indices: tuple):
+async def _async_getitem(obj: Any, indices: tuple[Any, ...] | list[Any] | Any) -> Any:
         """
         Asynchronously get a slice of an object that supports indexing and slicing.
         
@@ -213,7 +219,7 @@ async def _async_getitem(obj, indices: tuple):
         else:
             raise ValueError(f"Object of type '{type(obj)}' does not support indexing and slicing.")
 
-def _gather_sync(*aws, return_exceptions: bool = False):
+def _gather_sync(*aws: Any, return_exceptions: bool = False) -> Any:
     """
     Sync version of asyncio.gather.
     Args: same as asyncio.gather
@@ -222,13 +228,13 @@ def _gather_sync(*aws, return_exceptions: bool = False):
         return await asyncio.gather(*aws, return_exceptions=return_exceptions)
     return sync(_f())
 
-import sys
-if "pyodide" in sys.modules:  # using javascript based zarr library
+from .constants import running_from_pyodide
+if running_from_pyodide:  # using javascript based zarr library
     import js
     
-    async def _awaitable_wrapper(coro):
+    async def _awaitable_wrapper(coro: Any) -> Any:
         return await coro
-    def sync(coro):
+    def sync(coro: Any) -> Any:
         """"
         Synchronously run an asynchronous coroutine.
         """
@@ -242,18 +248,21 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
 
     class _zarrFile:
         class ZarrArray:
-            def __init__(self, zarr_js, dts):
+            def __init__(self, zarr_js: Any, dts: Any) -> None:
                 self._zarr_js = zarr_js
-                self.dts = dts            
-            def __str__(self):
+                self.dts = dts
+                self._shape: tuple[int, ...] | None = None
+
+            def __str__(self) -> str:
                 return str(self.dts)
-            def __array__(self, dtype=None, copy=None):
+
+            def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
                 #TODO: implement dtype and copy
                 # see https://numpy.org/doc/stable/user/basics.interoperability.html#dunder-array-interface
                 return self[...]
             
-            async def getitem(self, index):
-                def index_to_js_slice(i):
+            async def getitem(self, index: Any) -> np.ndarray:
+                def index_to_js_slice(i: Any) -> list[Any]:
                     if isinstance(i, slice):
                         return [i.start, i.stop]
                     elif isinstance(i, type(Ellipsis)):
@@ -271,14 +280,14 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                     if len(index)-1>n_dim:
                         raise ValueError(f"Expected at most {n_dim} indices and got {len(index)} instead!")
                     n_null_indices = 1 + n_dim-len(index)
-                    new_index = ()
+                    new_index: tuple[Any, ...] = ()
                     for i in index:
                         if isinstance(i, type(Ellipsis)):
                             new_index += (slice(None),)*n_null_indices
                         else:
                             new_index += (i,)
                     index = new_index     
-                js_indices = []
+                js_indices: list[list[Any]] = []
                 for i in index:
                     js_indices.append(index_to_js_slice(i))
                 
@@ -289,73 +298,79 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
                 data = np.reshape(data, shape)
                 
                 # remove singleton dimensions
-                singleton_dims = ()
+                singleton_dims: tuple[int, ...] = ()
                 for i, ind in enumerate(index):
                     if isinstance(ind, int):
                         singleton_dims += (i,)
                 if len(singleton_dims)>0:
                     data = np.squeeze(data, axis=singleton_dims)
                 return data            
-            def __getitem__(self, index):
+            def __getitem__(self, index: Any) -> np.ndarray:
                 return sync(self.getitem(index))
             
             @property
-            def shape(self):
-                if hasattr(self, '_shape'):
+            def shape(self) -> tuple[int, ...]:
+                if self._shape is not None:
                     return self._shape
-                else:
-                    res = sync(self._zarr_js.get_array_shape(str(self.dts)))
-                    self._shape = _zarrFile.JsProxy_to_py(res)
-                    return self._shape
+                res = sync(self._zarr_js.get_array_shape(str(self.dts)))
+                shape = tuple(_zarrFile.JsProxy_to_py(res))
+                self._shape = shape
+                return shape
             @property
-            def size(self):
-                return np.prod(self.shape)
+            def size(self) -> int:
+                return int(np.prod(self.shape))
 
             @property
-            def ndim(self):
+            def ndim(self) -> int:
                 return len(self.shape)
             
 
-        def __init__(self, zarr_js, filename:str):
+        def __init__(self, zarr_js: Any | None = None, filename: str = "", mode: str = 'r', store_type: StoreType = StoreType.AUTO) -> None:
             self._zarr_js = zarr_js
             self.filename = filename
 
         @staticmethod
-        def JsProxy_to_py(jsproxy):
+        def JsProxy_to_py(jsproxy: Any) -> Any:
             #alternatively one can use isinstance(jsproxy, pyodide.ffi.JsProxy)
             if hasattr(jsproxy, "to_py"):
                 return jsproxy.to_py()
             return jsproxy
         
         # -------------------- Attribute Management --------------------
-        async def get_attr(self, full_path, attr_name):  
+        async def get_attr(self, full_path: str, attr_name: str) -> Any:
+            assert self._zarr_js is not None
             res = await self._zarr_js.get_attribute(str(full_path), str(attr_name))
             return _zarrFile.JsProxy_to_py(res)
         
         # -------------------- Group Management --------------------
-        async def open_group(self, full_path: str):
+        async def open_group(self, full_path: str, **kwargs: Any) -> Any:
+            assert self._zarr_js is not None
             res = await self._zarr_js.open_group(str(full_path))
             return res
         
         # -------------------- Dataset Management --------------------
-        async def open_dataset(self, full_path: str):
+        async def open_dataset(self, full_path: str) -> Any:
+            assert self._zarr_js is not None
             dts = await self._zarr_js.open_dataset(str(full_path))
             return _zarrFile.ZarrArray(self._zarr_js, dts)
         
         # -------------------- Listing --------------------
-        async def list_objects(self, full_path) -> list:
+        async def list_objects(self, full_path: str) -> list[str]:
+            assert self._zarr_js is not None
             res = await self._zarr_js.list_objects(str(full_path))
             return _zarrFile.JsProxy_to_py(res)
-        async def object_exists(self, full_path) -> bool:
+        async def object_exists(self, full_path: str) -> bool:
+            assert self._zarr_js is not None
             res = await self._zarr_js.object_exists(str(full_path))
             return _zarrFile.JsProxy_to_py(res)
-        async def list_attributes(self, full_path) -> list:
+        async def list_attributes(self, full_path: str) -> list[str]:
+            assert self._zarr_js is not None
             res = await self._zarr_js.list_attributes(str(full_path))
             return _zarrFile.JsProxy_to_py(res)
         
          # -------------------- File Management --------------------
 
-        def close(self):
+        def close(self) -> None:
             pass
 
         # -------------------- Properties --------------------
@@ -367,12 +382,13 @@ if "pyodide" in sys.modules:  # using javascript based zarr library
     _ZarrArray = _zarrFile.ZarrArray
 else:
     import zarr
-    import numcodecs
+    import numcodecs  # type: ignore[import-untyped]
 
     import importlib.util
 
     import zarr.api.asynchronous as zarr_async
-    def sync(coro):
+
+    def sync(coro: Any) -> Any:
         """"
         Synchronously run an asynchronous coroutine.
         """
@@ -383,7 +399,7 @@ else:
     _ZarrAsyncArray = zarr.AsyncArray
     _ZarrArray = zarr.Array
     
-    def _parse_storage_url(url):
+    def _parse_storage_url(url: str) -> dict[str, str]:
         from urllib.parse import urlparse
 
         parsed = urlparse(url)
@@ -431,8 +447,8 @@ else:
         }
     
 
-    class _zarrFile (FileAbstraction):
-        def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO):
+    class _zarrFile(FileAbstraction):  # type: ignore[no-redef]
+        def __init__(self, filename: str, mode: str = 'r', store_type: StoreType = StoreType.AUTO) -> None:
             """
             Initialize the Zarr file.
 
@@ -466,6 +482,7 @@ else:
                 raise ValueError(
                     f"Invalid mode '{mode}'. Supported modes are 'r', 'r+', 'a', 'w', and 'w-'.")
 
+            store: Any
             match store_type:
                 case st.ZIP:
                     mode_zip = mode
@@ -473,14 +490,14 @@ else:
                         mode_zip = 'x'
                     elif mode == 'r+':
                         mode_zip = 'a'
-                    store = zarr.storage.ZipStore(filename, mode=mode_zip)
+                    store = zarr.storage.ZipStore(filename, mode=mode_zip)  # type: ignore[arg-type]
                 case st.ZARR:
                     store = zarr.storage.LocalStore(filename)
                 case st.S3:
                     if importlib.util.find_spec('fsspec') is None:
                         raise ModuleNotFoundError(
                             "The fsspec module is required for using S3 storage")
-                    import fsspec
+                    import fsspec  # type: ignore[import-untyped]
                     parsed_url = _parse_storage_url(filename)                           
 
                     fs = fsspec.filesystem('s3', anon=True, asynchronous=True,
@@ -491,49 +508,56 @@ else:
                 case _:
                     raise ValueError(
                         f"Unsupported store type '{store_type}'. Supported types are 'zip', 'zarr', and 'remote'.")
-            self._root = sync(zarr_async.open_group(store=store, mode=mode))
+            mode_literal = cast(Literal['r', 'r+', 'a', 'w', 'w-'], mode)
+            self._root = sync(zarr_async.open_group(store=store, mode=mode_literal))
             self._store = store
             self.filename = filename
 
         # -------------------- Attribute Management --------------------
 
-        async def create_attr(self, obj, name: str, data, **kwargs):
+        async def create_attr(self, obj: object, name: str, data: Any, **kwargs: Any) -> None:
             for k in kwargs.keys():
                 warnings.warn(
                     f"'{k}' argument not supported by 'create_attr' in zarr")
-            if isinstance(obj, str):
-                obj = await self._root.getitem(obj)
+            obj_any: Any = obj
+            if isinstance(obj_any, str):
+                obj_any = await self._root.getitem(obj_any)
             """
             if isinstance(obj, zarr.AsyncGroup):
                 obj = zarr.Group(obj)
             elif isinstance(obj, zarr.AsyncArray):
                 obj = zarr.Array(obj)
             """
-            attrs = obj.attrs
+            attrs = obj_any.attrs
             attrs[name] = data
-            await obj.update_attributes(attrs) 
+            await obj_any.update_attributes(attrs) 
 
-        async def get_attr(self, obj, name: str):
-            if isinstance(obj, str):
-                obj = await self._root.getitem(obj)
-            return obj.attrs[name]
+        async def get_attr(self, obj: object, name: str) -> Any:
+            obj_any: Any = obj
+            if isinstance(obj_any, str):
+                obj_any = await self._root.getitem(obj_any)
+            return obj_any.attrs[name]
 
         # -------------------- Group Management --------------------
 
-        async def open_group(self, full_path: str, **kwargs):
+        async def open_group(self, full_path: str, **kwargs: Any) -> Any:
             for k in kwargs.keys():
                 warnings.warn(
                     f"'{k}' argument not supported by 'open_group' in zarr")
             g = await self._root.getitem(full_path)
             return g
 
-        async def create_group(self, full_path: str):
+        async def create_group(self, full_path: str, **kwargs: Any) -> Any:
+            for k in kwargs.keys():
+                warnings.warn(
+                    f"'{k}' argument not supported by 'create_group' in zarr")
             g = await self._root.create_group(full_path)
             return g
 
         # -------------------- Dataset Management --------------------
 
-        def _to_ZarrArray(obj: zarr.AsyncArray):
+        @staticmethod
+        def _to_ZarrArray(obj: zarr.AsyncArray) -> zarr.AsyncArray:
             """"
             Add attributes to Zarr.AsyncArray object to support numpy indexing and slicing.
             
@@ -541,69 +565,78 @@ else:
                  Don't add any new functionality here and consider changing it in the future!
             """ 
             class _ZarrArray(zarr.AsyncArray):
-                def __array__(self, dtype=None, copy=None):
+                def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
                 # N.B. this is calling `sync` internally, so it shouldn't be used in async functions!!
-                    return zarr.Array(self).__array__(dtype=dtype, copy=copy)
-                async def to_np_array(self, dtype=None, copy=None):
+                    return np.asarray(zarr.Array(self).__array__(dtype=dtype, copy=copy))
+                async def to_np_array(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
                 # same as __array__ but using async code
                     return np.array(await self.getitem(...))
-                def __getitem__(self, index):
+                def __getitem__(self, index: Any) -> Any:
                 # N.B. this is calling `sync` internally, so it shouldn't be used in async functions!!
                     return zarr.Array(self).__getitem__(index)
             # since @dataclass(frozen=True), we need to use object.__setattr__
             object.__setattr__(obj, '__class__', _ZarrArray)
             return obj
 
-        async def open_dataset(self, full_path: str):
+        async def open_dataset(self, full_path: str) -> Any:
             ds = await self._root.getitem(full_path)
             # "upgrade" the object to a _ZarrArray
-            ds=_zarrFile._to_ZarrArray(ds)
+            ds = self._to_ZarrArray(ds)
             return ds
 
-        async def create_dataset(self, parent_group, name: str, data, chunk_size=None, compression: 'FileAbstraction.Compression' = FileAbstraction.Compression()):
-            if isinstance(parent_group, str):
-                parent_group = await self.getitem(parent_group)
-            compressor = None
+        async def create_dataset(self, parent_group: object, name: str, data: Any, chunk_size: tuple[int, ...] | str | None = None, compression: 'FileAbstraction.Compression' | None = FileAbstraction.Compression()):
+            parent_group_any: Any = parent_group
+            if isinstance(parent_group_any, str):
+                parent_group_any = await self._root.getitem(parent_group_any)
+            compressor: Any = None
             if chunk_size is None:
                 chunk_size = 'auto'
-            if compression is not None:
-                if compression.type == FileAbstraction.Compression.DEFAULT:
+            comp = compression
+            if comp is not None:
+                if comp.type == FileAbstraction.Compression.DEFAULT:
                     # see https://zarr.readthedocs.io/en/stable/api/zarr/index.html#zarr.create_array
                     compressor = 'auto'
-                elif compression.type == FileAbstraction.Compression.ZLIB:
-                    compressor = zarr.codecs.BloscCodec(
-                        cname='zlib', clevel=compression.level)
-                elif compression.type == FileAbstraction.Compression.LZF:
+                elif comp.type == FileAbstraction.Compression.ZLIB:
+                    if comp.level is None:
+                        compressor = zarr.codecs.BloscCodec(  # type: ignore[attr-defined]
+                            cname='zlib')
+                    else:
+                        compressor = zarr.codecs.BloscCodec(  # type: ignore[attr-defined]
+                            cname='zlib', clevel=comp.level)
+                elif comp.type == FileAbstraction.Compression.LZF:
                     compressor = numcodecs.LZF()
                 else:
-                    compression = None
+                    invalid_compression_type = comp.type
+                    comp = None
                     warnings.warn(
-                        f"Compression type '{compression.type}' not supported by zarr. Using no compression.")
-            ds = await parent_group.create_array(
+                        f"Compression type '{invalid_compression_type}' not supported by zarr. Using no compression.")
+            ds = await parent_group_any.create_array(
                 name=name, data=data,
                 chunks=chunk_size, compressors=compressor)
             # "upgrade" the object to a _ZarrArray
-            ds = _zarrFile._to_ZarrArray(ds)
+            ds = self._to_ZarrArray(ds)
             return ds
 
         # -------------------- Listing --------------------
 
-        async def list_objects(self, obj):
-            if isinstance(obj, str):
-                obj = await self._root.getitem(obj)
-            return tuple([str(el) async for el in obj.keys()])
+        async def list_objects(self, obj: object) -> list[str]:
+            obj_any: Any = obj
+            if isinstance(obj_any, str):
+                obj_any = await self._root.getitem(obj_any)
+            return [str(el) async for el in obj_any.keys()]
 
-        async def object_exists(self, full_path) -> bool:
+        async def object_exists(self, full_path: str) -> bool:
             return await self._root.contains(full_path)
 
-        async def list_attributes(self, obj):
-            if isinstance(obj, str):
-                obj = await self._root.getitem(obj)
-            return (str(attr) for attr in obj.attrs.keys())
+        async def list_attributes(self, obj: object) -> list[str]:
+            obj_any: Any = obj
+            if isinstance(obj_any, str):
+                obj_any = await self._root.getitem(obj_any)
+            return [str(attr) for attr in obj_any.attrs.keys()]
 
         # -------------------- File Management --------------------
 
-        def close(self):
+        def close(self) -> None:
             self._store.close()
 
         # -------------------- Properties --------------------

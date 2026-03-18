@@ -40,3 +40,13 @@ converter = ["h5py"]
 Documentation = "https://prevedel-lab.github.io/brimfile/"
 Repository = "https://github.com/prevedel-lab/brimfile"
 Issues = "https://github.com/prevedel-lab/brimfile/issues"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/brimfile"]
+show_error_codes = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["brimfile.converter", "brimfile.converter.*"]
+ignore_errors = true
