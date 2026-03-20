@@ -1,8 +1,12 @@
 [build-system]
-requires = ["hatchling >= 1.26"]
+requires = ["hatchling >= 1.26", "hatch-vcs >= 0.4"]
 build-backend = "hatchling.build"
 [tool.hatch.version]
-path = "src/brimfile/__init__.py"
+source = "vcs"
+[tool.hatch.version.raw-options]
+version_scheme = "no-guess-dev"
+[tool.hatch.build.hooks.vcs]
+version-file = "src/brimfile/_version.py"
 
 [project]
 name = "brimfile"

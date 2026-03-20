@@ -3,7 +3,7 @@ name: Publish to PyPi
 on:
   push:
     tags:
-      - '*'
+      - 'v[0-9]*'
 
 jobs:
   build:
@@ -35,7 +35,7 @@ jobs:
   publish-to-pypi:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
-    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
+    if: startsWith(github.ref, 'refs/tags/') && startsWith(github.ref_name, 'v')  # only publish to PyPI on tag pushes
     needs:
     - build
     runs-on: ubuntu-latest

@@ -334,7 +334,10 @@ ar.save_image_to_OMETiff(ar_cls.Quantity.Shift, ar_cls.PeakType.average, filenam
 ```
 """
 
-__version__ = "1.5.0"
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "unknown"
 
 import os
 # Default: normal imports enabled.
