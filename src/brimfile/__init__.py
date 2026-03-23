@@ -142,9 +142,9 @@ The returned Metadata object contains all the metadata associated with the file 
 ```Python
 metadata = data.get_metadata()
 ```
-The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.main.Metadata.print_schema` method, which also allows to print the description of each metadata field:
+The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.schema.print_schema` method, which also allows to print the description of each metadata field:
 ```Python
-Metadata.print_schema(include_description=True)
+brim.metadata.print_schema(include_description=True)
 ```
 For metadata fields which require an enum, it can be imported from `brimfile.metadata`, e.g. `from brimfile.metadata import ImmersionMedium`.
 

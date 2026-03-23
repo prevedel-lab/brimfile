@@ -270,3 +270,27 @@ def schema_as_string(
                     )
 
     return "\n".join(lines).lstrip("\n")
+
+
+def print_schema(
+    include_description: bool = True, *, 
+    description_width: int | None = None,
+    attr_width: int = 30,
+    type_width: int | None = None,
+    mandatory_width: int = 10
+) -> None:
+    """Print all metadata attributes defined in ``METADATA_SCHEMA``.
+    Args:
+        include_description: Whether to include the description column.
+        For other arguments, see `schema_as_string()`. They are passed to this function to allow configuring the output format when printing the metadata schema.
+    """
+    
+    print(
+        schema_as_string(
+            include_description=include_description,
+            description_width=description_width,
+            attr_width=attr_width,
+            type_width=type_width,
+            mandatory_width=mandatory_width
+        )
+    )
