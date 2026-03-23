@@ -137,17 +137,18 @@ PSD, frequency, PSD_units, frequency_units = data.get_spectrum_in_image((pz,py,p
 
 ### Metadata
 
-You can then get a `brimfile.metadata.metadata_class.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
-The returned Metadata object contains all the metadata associated with the file and the data group.
+You can then get a `brimfile.metadata.main.Metadata` object by simply calling the `brimfile.data.Data.get_metadata` method on a previously retrieved `Data` object.
+The returned Metadata object contains all the metadata associated with the file and the specific data group.
 ```Python
 metadata = data.get_metadata()
 ```
-The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.metadata_class.Metadata.print_schema` method, which also allows to print the description of each metadata field:
+The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.main.Metadata.print_schema` method, which also allows to print the description of each metadata field:
 ```Python
 Metadata.print_schema(include_description=True)
 ```
+For metadata fields which require an enum, it can be imported from `brimfile.metadata`, e.g. `from brimfile.metadata import ImmersionMedium`.
 
-New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.metadata_class.Metadata.add` method.
+New metadata can be added to the current data group (or to the whole file) by calling the `brimfile.metadata.main.Metadata.add` method.
 ```Python
 import datetime
 
@@ -157,11 +158,13 @@ temp = Attr(22.0, 'C')
     
 metadata.add(Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp},local=True)
 ```
+When adding metadata fields which require an enum, the enum value or the string representation of the enum member (case-insensitive and ignoring underscores and spaces) can be used, e.g. `brim.metadata.SignalType.spontaneous` or 'spontaneous' can be used for the `Signal_type` field.
+
 A single metadata item can be retrieved by indexing the `Metadata` object, which takes a string in the format 'group.object', e.g. 'Experiment.Datetime'.
 ```Python
 datetime = metadata['Experiment.Datetime']
 ```
-A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.metadata_class.Metadata.all_to_dict` method.
+A dictionary containing all metadata can be retrieved by calling the `brimfile.metadata.main.Metadata.all_to_dict` method.
 ```Python
 metadata.all_to_dict()
 ```
