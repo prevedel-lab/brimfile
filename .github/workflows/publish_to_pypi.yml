@@ -1,4 +1,6 @@
 name: Publish to PyPi
+permissions:
+  contents: read
 
 on:
   push:

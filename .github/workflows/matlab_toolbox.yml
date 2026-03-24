@@ -1,13 +1,17 @@
 name: Build MATLAB Toolbox
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
 
 jobs:
   build-toolbox:
+    permissions:
+      contents: read
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup MATLAB
         uses: matlab-actions/setup-matlab@v2
@@ -34,6 +38,8 @@ jobs:
     name: Create GitHub Release
     needs: build-toolbox
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
