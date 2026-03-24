@@ -16,17 +16,19 @@ def get_fit_model(model: FitModel) -> Callable[..., NDArray]:
     """
     Get the function corresponding to the given fit model
     """
+    fit_model: Callable[..., NDArray]
     match model:
         case FitModel.Lorentzian:
-            return lorentzian
+            fit_model = lorentzian
         case FitModel.DHO:
-            return dho
+            fit_model = dho
         case FitModel.Gaussian:
-            return gaussian
+            fit_model = gaussian
         case FitModel.Voigt:
-            return voigt
+            fit_model = voigt
         case _:
             raise NotImplementedError(f"Fit model {model} is not implemented yet")
+    return fit_model
 
 #%% Fit model definitions
 

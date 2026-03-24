@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 
-from dataclasses import dataclass
 from difflib import get_close_matches, SequenceMatcher
 from enum import Enum
 from numbers import Real

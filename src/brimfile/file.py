@@ -2,7 +2,6 @@ import numpy as np
 import warnings
 
 from .data import Data
-from .metadata import Metadata
 
 from .utils import concatenate_paths
 from .constants import brim_obj_names
@@ -113,7 +112,7 @@ class File:
         sync(f._file.create_attr('/', 'brim_version', brim_version))
 
         # Root Brillouin_data group
-        fr = sync(f._file.create_group(brim_obj_names.Brillouin_base_path))
+        sync(f._file.create_group(brim_obj_names.Brillouin_base_path))
 
         return f
 

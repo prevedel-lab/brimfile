@@ -526,7 +526,6 @@ def validate_root_attrs(attrs: dict) -> list[ValidationError]:
     subtype = attrs.get(attr_name, None)
     if subtype is not None:
         # TODO validate the subtype value when the allowed subtypes are defined
-        pass
         attr_name = 'Subtype_features'
         subtype_features = attrs.get(attr_name, None)
         if subtype_features is None:

@@ -98,7 +98,7 @@ class AnalysisResults:
         """
         group_name = f"{brim_obj_names.data.analysis_results}_{index}"
         ar_full_path = concatenate_paths(data._path, group_name)
-        group = sync(data._file.create_group(ar_full_path))
+        sync(data._file.create_group(ar_full_path))
         return cls(data._file, ar_full_path, data_group_path=data._path,
                     spatial_map=data._spatial_map, spatial_map_px_size=data._spatial_map_px_size,
                     sparse=sparse)

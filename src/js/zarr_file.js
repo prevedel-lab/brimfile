@@ -191,8 +191,10 @@ class ZarrFile {
     }
     // for now simply return the path since the array object itself is not json transferrable
     return full_path
+    /*
     const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
     return arr
+    */
   }
 
   async get_array_slice(full_path, indices){
@@ -319,7 +321,7 @@ class ZarrFile {
     await this.#wait_for_ready()
     full_path = standardize_path(full_path);
     try {
-      const obj = await zarr.open.v3(this.root.resolve(full_path));
+      await zarr.open.v3(this.root.resolve(full_path));
       return true;
     }
     catch (e) {
@@ -329,7 +331,7 @@ class ZarrFile {
 
   async isArray(full_path) {
     try {
-        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
+        await zarr.open.v3(this.root.resolve(full_path), { kind: "array" });
         return true;
     } catch (error) {
         return false;
@@ -337,7 +339,7 @@ class ZarrFile {
   }
   async isGroup(full_path) {
     try {
-        const arr = await zarr.open.v3(this.root.resolve(full_path), { kind: "group" });
+        await zarr.open.v3(this.root.resolve(full_path), { kind: "group" });
         return true;
     } catch (error) {
         return false;

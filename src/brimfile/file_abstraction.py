@@ -533,6 +533,7 @@ else:
 
         # -------------------- Dataset Management --------------------
 
+        @staticmethod
         def _to_ZarrArray(obj: zarr.AsyncArray):
             """"
             Add attributes to Zarr.AsyncArray object to support numpy indexing and slicing.

@@ -593,6 +593,7 @@ class Data:
                             raise ValueError(
                                 f"'{coor}' in 'Spatial_map' is invalid!")
                         return size1
+                    return size
                 size = check_coor('x')
                 size = check_coor('y')
                 size = check_coor('z')
@@ -659,7 +660,7 @@ class Data:
 
                 def add_sm_dataset(coord: str):
                     if coord in sm:
-                        coord_dts = sync(self._file.create_dataset(
+                        sync(self._file.create_dataset(
                             sm_group, coord, data=sm[coord], compression=compression))
 
                 add_sm_dataset('x')

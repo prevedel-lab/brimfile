@@ -99,7 +99,7 @@ def np_array_to_smallest_int_type(arr):
     """
     def type_bug_fix (dt):
         # explicitely pass an object of type np.dtype
-        # as what is returned by `min_scalar_type seems``
+        # as what is returned by `min_scalar_type` seems
         # to break type matching in the zarr library
         match dt:
             case np.int8:
@@ -120,6 +120,7 @@ def np_array_to_smallest_int_type(arr):
                 return np.uint64
             case _:
                 return dt
+        return dt
     if not isinstance(arr, np.ndarray):
         raise TypeError("Input must be a numpy array.")
     if not np.issubdtype(arr.dtype, np.integer):

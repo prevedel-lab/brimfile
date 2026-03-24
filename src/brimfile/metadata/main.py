@@ -1,5 +1,4 @@
 from ..file_abstraction import FileAbstraction, sync, _gather_sync
-from ..utils import concatenate_paths
 from . import schema, validation
 from .types import MetadataItem
 
