@@ -392,7 +392,7 @@ else:
         path = parsed.path.lstrip('/')
 
         # Case 1: Amazon S3 (virtual-hosted-style or path-style)
-        if "amazonaws.com" in netloc:
+        if netloc == "amazonaws.com" or netloc.endswith(".amazonaws.com"):
             parts = netloc.split('.')
             if parts[0] != 's3':  # virtual-hosted-style
                 bucket = parts[0]
@@ -404,7 +404,7 @@ else:
                 endpoint = netloc
                 object_path = path_parts[1] if len(path_parts) > 1 else ''
         # Case 2: Google Cloud Storage
-        elif "storage.googleapis.com" in netloc:
+        elif netloc == "storage.googleapis.com" or netloc.endswith(".storage.googleapis.com"):
             if netloc == "storage.googleapis.com":
                 # path-style: https://storage.googleapis.com/bucket-name/object
                 path_parts = path.split('/', 1)
