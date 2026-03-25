@@ -384,7 +384,7 @@ class Data:
         else:
             return self._get_spectrum(coor)
           
-    def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0):
+    async def get_spectrum_and_all_quantities_in_image_async(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0) -> tuple[tuple, dict]:
         """
         Retrieve the spectrum and all available quantities from the analysis results at a specific spatial coordinate.
 
@@ -403,11 +403,16 @@ class Data:
         index = coor
         if self._sparse:
             index = int(self._spatial_map[coor])
-        spectrum, quantities = _gather_sync(
+        spectrum, quantities = await asyncio.gather(
             self._get_spectrum_async(index),
             ar._get_all_quantities_at_index(index, index_peak)
         )
         return spectrum, quantities
+    def get_spectrum_and_all_quantities_in_image(self, ar: 'Data.AnalysisResults', coor: tuple, index_peak: int = 0) -> tuple[tuple, dict]:
+        """
+        Synchronous wrapper for `get_spectrum_and_all_quantities_in_image_async` (see doc for `brimfile.data.Data.get_spectrum_and_all_quantities_in_image_async`)
+        """
+        return sync(self.get_spectrum_and_all_quantities_in_image_async(ar, coor, index_peak))
 
     def get_metadata(self):
         """
