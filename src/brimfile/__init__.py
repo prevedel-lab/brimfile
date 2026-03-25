@@ -177,8 +177,11 @@ analysis_results = data.get_analysis_results()
 ```
 or create a new one by calling the `brimfile.data.Data.create_analysis_results_group`:
 ``` Python
-analysis_results = data.create_analysis_results_group(shift, width,
-    name='my_analysis_results')
+ar = data.create_analysis_results_group({'shift':shift_GHz, 'shift_units': 'GHz',
+                                        'width': width_GHz, 'width_units': 'GHz'},
+                                        {'shift':shift_GHz, 'shift_units': 'GHz',
+                                        'width': width_GHz, 'width_units': 'GHz'},
+                                        name = 'my_analysis_results')
 ```
 
 `AnalysisResults` also exposes a method to retrieve the images of the analysis results (`brimfile.analysis_results.AnalysisResults.get_image`):
@@ -237,6 +240,7 @@ def generate_data():
 Now we can use this function to create a brim file with a data group and some metadata:
 
 ``` Python
+    import brimfile as brim
     from brimfile import File, Data, Metadata, StoreType
     from datetime import datetime
 
@@ -256,15 +260,18 @@ Now we can use this function to create a brim file with a data group and some me
     
     md.add(Metadata.Type.Experiment, {'Datetime':datetime_now, 'Temperature':temp})
     md.add(Metadata.Type.Optics, {'Wavelength':Attr(660, 'nm')})
+    # enums can be added using the enum value or the string representation of the enum member (case-insensitive and ignoring underscores and spaces)
+    md.add(Metadata.Type.Brillouin, {'Signal_type': brim.metadata.SignalType.spontaneous, 
+                                          'Phonons_measured': 'longitudinal',})
     # Add some metadata to the local data group   
     temp = Attr(37.0, 'C')
     md.add(Metadata.Type.Experiment, {'Temperature':temp}, local=True)
 
     # create the analysis results
     ar = d0.create_analysis_results_group({'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},
+                                             'width': width_GHz, 'width_units': 'GHz'},
                                              {'shift':shift_GHz, 'shift_units': 'GHz',
-                                             'width': width_GHz, 'width_units': 'Hz'},
+                                             'width': width_GHz, 'width_units': 'GHz'},
                                              name = 'test1_analysis')
     f.close()
 ```
