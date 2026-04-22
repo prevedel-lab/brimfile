@@ -89,7 +89,7 @@ class File:
         Returns:
             bool: True if the file is valid, False otherwise.
         """
-        # TODO validate file against https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md
+        # TODO validate file against https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md
         return True
 
     @classmethod
@@ -149,7 +149,7 @@ class File:
     def create_data_group_sparse(self, PSD: np.ndarray, frequency: np.ndarray, scanning: dict, *, timestamp: np.ndarray = None,
                                 index: int = None, name: str = None, compression: FileAbstraction.Compression = FileAbstraction.Compression()) -> 'Data':
         """
-        Adds a new [sparse data entry](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) to the file.
+        Adds a new [sparse data entry](https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) to the file.
         
         Sparse data allows storage of spectra in a flattened format (first dimension is the spectrum index),
         with spatial mapping provided separately. This is efficient for data with irregular sampling or missing pixels.
@@ -183,7 +183,7 @@ class File:
                 See `brimfile.data.Data._add_data` docstring for detailed structure.
             px_size_um (tuple, optional): A tuple of 3 elements (z, y, x) for pixel size in μm. For non-sparse data only.
             timestamp (np.ndarray, optional): Timestamps in milliseconds for the data. Defaults to None.
-            sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
+            sparse (bool): Whether the data is sparse. See https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             index (int, optional): The index for the new data group. If None, the next available index is used. Defaults to None.
             name (str, optional): The name for the new data group. Defaults to None.
             compression (FileAbstraction.Compression, optional): The compression method to use for the data. Defaults to FileAbstraction.Compression.DEFAULT.

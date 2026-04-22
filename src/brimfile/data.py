@@ -216,8 +216,8 @@ class Data:
         Use only if more specialized functions are not working for your application!
         Returns:
             tuple: (PSD, frequency, PSD_units, frequency_units)
-                - PSD: A 2D (or more) numpy array containing all the spectra (see [specs](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
-                - frequency: A numpy array representing the frequency data (see [specs](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
+                - PSD: A 2D (or more) numpy array containing all the spectra (see [specs](https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
+                - frequency: A numpy array representing the frequency data (see [specs](https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md) for more details).
                 - PSD_units: The units of the PSD.
                 - frequency_units: The units of the frequency.
         """
@@ -758,7 +758,7 @@ class Data:
         Args:
             file (File): The parent File object.
             index (int): The index for the new data group.
-            sparse (bool): Whether the data is sparse. See https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
+            sparse (bool): Whether the data is sparse. See https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md for details. Defaults to False.
             name (str, optional): The name for the new data group. Defaults to None.
 
         Returns:

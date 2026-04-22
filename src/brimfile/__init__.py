@@ -3,7 +3,7 @@
 
 *brimfile* is a Python library to read from and write to brim (**Br**illouin **im**aging) files,
 which contain both the spectra and analysed data for Brillouin imaging.
-More information about the brim file format can be found [here](https://github.com/prevedel-lab/Brillouin-standard-file).
+More information about the brim file format can be found [here](https://github.com/brillouin-imaging/Brillouin-standard-file).
 
 Briefly, a brim file can contain multiple data groups,
 typically corresponding to imaging of the same sample at different timepoints/conditions.
@@ -142,7 +142,7 @@ The returned Metadata object contains all the metadata associated with the file 
 ```Python
 metadata = data.get_metadata()
 ```
-The list of available metadata is defined [here](https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.schema.print_schema` method, which also allows to print the description of each metadata field:
+The list of available metadata is defined [here](https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md) and can also be printed in the terminal with the `brimfile.metadata.schema.print_schema` method, which also allows to print the description of each metadata field:
 ```Python
 brim.metadata.print_schema(include_description=True)
 ```
@@ -300,7 +300,7 @@ and we can read it back:
     # get the metadata 
     md = d.get_metadata()
     all_metadata = md.all_to_dict()
-    # the list of metadata is defined here https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md
+    # the list of metadata is defined here https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md
     time = md['Experiment.Datetime']
     time.value
     time.units

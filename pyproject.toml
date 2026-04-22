@@ -41,6 +41,6 @@ export-tiff = ["tifffile"]
 converter = ["h5py"]
 
 [project.urls]
-Documentation = "https://prevedel-lab.github.io/brimfile/"
-Repository = "https://github.com/prevedel-lab/brimfile"
-Issues = "https://github.com/prevedel-lab/brimfile/issues"
+Documentation = "https://brillouin-imaging.github.io/brimfile/"
+Repository = "https://github.com/brillouin-imaging/brimfile"
+Issues = "https://github.com/brillouin-imaging/brimfile/issues"

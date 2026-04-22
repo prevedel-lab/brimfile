@@ -617,7 +617,7 @@ def validate_Brillouin_data_group(node: dict) -> list[ValidationError]:
     return errs
 
 def validate_json(json_descriptor: str) -> list[ValidationError]:
-    """Validate a JSON descriptor against the expected structure of a brim file (https://github.com/prevedel-lab/Brillouin-standard-file/blob/linkml-schema/docs/brim_file_specs.md).
+    """Validate a JSON descriptor against the expected structure of a brim file (https://github.com/brillouin-imaging/Brillouin-standard-file/blob/linkml-schema/docs/brim_file_specs.md).
 
     This function checks that the JSON descriptor contains all required fields
     and that they have the correct types. It raises a ValueError if any

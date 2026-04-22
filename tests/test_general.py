@@ -86,7 +86,7 @@ def test_general(tmp_path):
     # get the metadata 
     md = d.get_metadata()
     all_metadata = md.all_to_dict()
-    # the list of metadata is defined here https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md
+    # the list of metadata is defined here https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_metadata.md
     time = md['Experiment.Datetime']
     time.value
     time.units

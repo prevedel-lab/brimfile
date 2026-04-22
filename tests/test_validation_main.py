@@ -1,7 +1,7 @@
 """Unit tests for validation rules in brimfile.validation.main.
 
 The assertions in this file are derived from the BRIM specification:
-https://github.com/prevedel-lab/Brillouin-standard-file/blob/main/docs/brim_file_specs.md
+https://github.com/brillouin-imaging/Brillouin-standard-file/blob/main/docs/brim_file_specs.md
 """
 
 import pytest
