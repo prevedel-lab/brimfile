@@ -266,7 +266,7 @@ class ZarrFile {
         if (Array.isArray(cp)) {
             prefixes = cp.map(ExtractKeyFromPrefix);
         } else if (cp.Prefix) {
-            prefixes = [ExtractKeyFromPrefix(cp.Prefix)];
+            prefixes = [ExtractKeyFromPrefix(cp)];
         }
     }
     return prefixes;
